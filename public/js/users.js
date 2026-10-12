@@ -55,6 +55,9 @@ async function loadUsers() {
         <button class="btn btn-sm btn-outline-primary" data-save-id="${u.id}" disabled>
           Save
         </button>
+        <button class="btn btn-sm btn-outline-danger" data-delete-id="${u.id}" data-email="${escapeHtml(u.email)}" ${isSelf ? 'disabled' : ''}>
+          Delete
+        </button>
       </td>
     </tr>
   `;
@@ -94,6 +97,29 @@ async function loadUsers() {
         alert(err.message);
         btn.disabled = false;
         btn.textContent = originalLabel;
+      }
+    });
+  });
+
+  document.querySelectorAll('[data-delete-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.deleteId;
+      const email = btn.dataset.email;
+      const confirmed = confirm(
+        `Permanently delete ${email}?\n\nThis will also delete every ticket they submitted (and its comments/attachments). ` +
+        `Tickets they were assigned to or approving will just be unassigned, not deleted. This cannot be undone.`
+      );
+      if (!confirmed) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Deleting...';
+      try {
+        await api.delete(`/users/${id}`);
+        await loadUsers();
+      } catch (err) {
+        alert(err.message);
+        btn.disabled = false;
+        btn.textContent = 'Delete';
       }
     });
   });

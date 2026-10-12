@@ -132,4 +132,49 @@ router.patch('/:id', requireAuth, requireRole('super_admin'), async (req, res) =
   res.json({ user });
 });
 
+router.delete('/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+  const id = Number(req.params.id);
+  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+
+  if (id === req.user.id) {
+    return res.status(400).json({ error: 'You cannot delete your own account' });
+  }
+
+  if (target.role === 'super_admin') {
+    const otherSuperAdmins = db.prepare(
+      "SELECT COUNT(*) AS c FROM users WHERE role = 'super_admin' AND id != ?"
+    ).get(id).c;
+    if (otherSuperAdmins === 0) {
+      return res.status(400).json({ error: 'Cannot delete the last Super Admin' });
+    }
+  }
+
+  const deleteUser = db.transaction((userId) => {
+    const ownTicketIds = db.prepare('SELECT id FROM tickets WHERE created_by = ?').all(userId).map(t => t.id);
+
+    for (const ticketId of ownTicketIds) {
+      db.prepare('DELETE FROM equipment_requests WHERE ticket_id = ?').run(ticketId);
+      db.prepare('DELETE FROM comments WHERE ticket_id = ?').run(ticketId);
+      db.prepare('DELETE FROM notifications WHERE ticket_id = ?').run(ticketId);
+    }
+    db.prepare('DELETE FROM tickets WHERE created_by = ?').run(userId);
+
+    db.prepare('UPDATE tickets SET assigned_to = NULL WHERE assigned_to = ?').run(userId);
+    db.prepare('UPDATE tickets SET approver_id = NULL, approval_status = NULL, approved_at = NULL WHERE approver_id = ?').run(userId);
+
+    db.prepare('DELETE FROM comments WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM notifications WHERE user_id = ?').run(userId);
+    db.prepare('UPDATE activity_log SET actor_id = NULL WHERE actor_id = ?').run(userId);
+
+    db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+  });
+
+  deleteUser(id);
+
+  logActivity(req.user, 'delete', 'user', id, `Deleted ${target.role} account ${target.email}`);
+
+  res.json({ ok: true });
+});
+
 module.exports = router;

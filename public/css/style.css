@@ -1,0 +1,88 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --bs-body-font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --bs-border-radius-sm: 0.45rem;
+  --bs-border-radius: 0.65rem;
+  --bs-border-radius-lg: 0.9rem;
+  --bs-border-radius-xl: 1.1rem;
+
+  --bs-primary: #4f46e5;
+  --bs-primary-rgb: 79, 70, 229;
+  --bs-primary-text-emphasis: #3730a3;
+  --bs-primary-bg-subtle: #e0e7ff;
+  --bs-primary-border-subtle: #c7d2fe;
+
+  --bs-link-color: #4f46e5;
+  --bs-link-color-rgb: 79, 70, 229;
+  --bs-link-hover-color: #4338ca;
+  --bs-link-hover-color-rgb: 67, 56, 202;
+}
+
+[data-bs-theme="dark"] {
+  --bs-primary: #818cf8;
+  --bs-primary-rgb: 129, 140, 248;
+  --bs-primary-text-emphasis: #c7d2fe;
+  --bs-primary-bg-subtle: #312e81;
+  --bs-primary-border-subtle: #4338ca;
+
+  --bs-link-color: #a5b4fc;
+  --bs-link-color-rgb: 165, 180, 252;
+  --bs-link-hover-color: #c7d2fe;
+  --bs-link-hover-color-rgb: 199, 210, 254;
+}
+
+body {
+  background-color: #f8fafc;
+  letter-spacing: -0.01em;
+}
+
+[data-bs-theme="dark"] body {
+  background-color: #0f1117;
+}
+
+.auth-page {
+  min-height: 100vh;
+}
+
+.card {
+  border: none;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.05);
+}
+
+[data-bs-theme="dark"] .card {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.app-navbar {
+  background: linear-gradient(135deg, #4338ca, #312e81);
+}
+
+.navbar-brand {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.btn {
+  font-weight: 500;
+}
+
+.badge {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.badge-status-open { background-color: #4f46e5; }
+.badge-status-in_progress { background-color: #f59e0b; }
+.badge-status-resolved { background-color: #16a34a; }
+.badge-status-closed { background-color: #6b7280; }
+
+.badge-priority-low { background-color: #6b7280; }
+.badge-priority-medium { background-color: #0891b2; }
+.badge-priority-high { background-color: #f59e0b; }
+.badge-priority-urgent { background-color: #dc2626; }
+
+#notifList {
+  font-size: 0.875rem;
+}

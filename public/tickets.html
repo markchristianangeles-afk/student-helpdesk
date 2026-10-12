@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tickets - Student Helpdesk</title>
+<script src="/js/theme.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="app-navbar"></div>
+<div class="container pb-5">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Tickets</h4>
+    <button class="btn btn-primary" id="newTicketBtn" data-bs-toggle="modal" data-bs-target="#newTicketModal">
+      <i class="bi bi-plus-lg"></i> New Ticket
+    </button>
+  </div>
+
+  <form id="filterForm" class="row g-2 mb-3">
+    <div class="col-6 col-md-2">
+      <select id="filterStatus" class="form-select">
+        <option value="">All Statuses</option>
+        <option value="open">Open</option>
+        <option value="in_progress">In Progress</option>
+        <option value="resolved">Resolved</option>
+        <option value="closed">Closed</option>
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <select id="filterPriority" class="form-select">
+        <option value="">All Priorities</option>
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+        <option value="urgent">Urgent</option>
+      </select>
+    </div>
+    <div class="col-6 col-md-3">
+      <select id="filterCategory" class="form-select">
+        <option value="">All Categories</option>
+      </select>
+    </div>
+    <div class="col-6 col-md-3">
+      <input type="text" id="filterSearch" class="form-control" placeholder="Search subject...">
+    </div>
+    <div class="col-12 col-md-2 d-flex gap-2">
+      <button type="submit" class="btn btn-outline-primary flex-fill">Filter</button>
+      <button type="button" id="clearFiltersBtn" class="btn btn-outline-secondary">Clear</button>
+    </div>
+  </form>
+
+  <div id="ticketTableContainer"></div>
+</div>
+
+<div class="modal fade" id="newTicketModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="newTicketForm">
+        <div class="modal-header">
+          <h5 class="modal-title">New Ticket</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="newTicketError" class="alert alert-danger d-none"></div>
+          <div class="mb-3">
+            <label class="form-label">Section</label>
+            <input type="text" id="ticketSectionField" class="form-control" disabled>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Subject</label>
+            <input type="text" id="newTicketSubject" class="form-control" maxlength="150"
+                   placeholder="e.g., Unable to log into the student portal" required>
+            <div class="form-text">Describe your issue or request in one sentence.</div>
+          </div>
+          <div class="row">
+            <div class="col-6 mb-3">
+              <label class="form-label">Category</label>
+              <select id="newTicketCategory" class="form-select">
+                <option value="">None</option>
+              </select>
+            </div>
+            <div class="col-6 mb-3">
+              <label class="form-label">Priority</label>
+              <select id="newTicketPriority" class="form-select">
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </div>
+          </div>
+          <div id="descriptionAnchorDefault"></div>
+          <div class="mb-3" id="descriptionGroup">
+            <label class="form-label">Description (or other Remarks)</label>
+            <textarea id="newTicketDescription" class="form-control" rows="4" required></textarea>
+          </div>
+
+          <div id="equipmentFields" class="d-none">
+            <hr>
+            <h6 class="mb-2">Equipment Details</h6>
+            <div class="mb-3">
+              <label class="form-label">Equipment Name</label>
+              <input type="text" id="equipmentName" class="form-control" placeholder="e.g., Digital Multimeter">
+            </div>
+            <div class="row">
+              <div class="col-4 mb-3">
+                <label class="form-label">Quantity</label>
+                <input type="number" id="equipmentQuantity" class="form-control" min="1" value="1">
+              </div>
+              <div class="col-4 mb-3">
+                <label class="form-label">Borrow Date</label>
+                <input type="date" id="borrowDate" class="form-control">
+              </div>
+              <div class="col-4 mb-3">
+                <label class="form-label">Return Date</label>
+                <input type="date" id="returnDate" class="form-control">
+              </div>
+            </div>
+            <div id="descriptionAnchorEquipment"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">Submit Ticket</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/nav.js"></script>
+<script src="/js/ui.js"></script>
+<script src="/js/tickets.js"></script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+const api = {
+  async request(method, path, body) {
+    const res = await fetch(`/api${path}`, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      credentials: 'include',
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    let data = {};
+    try { data = await res.json(); } catch (e) { /* no body */ }
+    if (!res.ok) throw new Error(data.error || 'Request failed');
+    return data;
+  },
+  get(path) { return this.request('GET', path); },
+  post(path, body) { return this.request('POST', path, body); },
+  patch(path, body) { return this.request('PATCH', path, body); },
+};
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : str;
+  return div.innerHTML;
+}

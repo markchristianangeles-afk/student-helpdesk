@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { requireAuth, JWT_SECRET } = require('../middleware/auth');
 const { validateEmailOrThrow } = require('../utils/validateEmail');
+const logActivity = require('../utils/logActivity');
 
 const router = express.Router();
 
@@ -116,6 +117,15 @@ router.patch('/me', requireAuth, async (req, res) => {
   } else {
     db.prepare('UPDATE users SET name = ?, email = ?, section = ? WHERE id = ?')
       .run(nextName, nextEmail, nextSection, user.id);
+  }
+
+  const changes = [];
+  if (nextName !== user.name) changes.push('name');
+  if (nextEmail !== user.email) changes.push('email');
+  if (nextSection !== user.section) changes.push('section');
+  if (nextPasswordHash) changes.push('password');
+  if (changes.length > 0) {
+    logActivity(req.user, 'update', 'user', user.id, `Updated their own profile (${changes.join(', ')})`);
   }
 
   const updated = db.prepare('SELECT id, name, email, role, is_active, section FROM users WHERE id = ?').get(user.id);

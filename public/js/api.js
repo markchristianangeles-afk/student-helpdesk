@@ -14,6 +14,7 @@ const api = {
   get(path) { return this.request('GET', path); },
   post(path, body) { return this.request('POST', path, body); },
   patch(path, body) { return this.request('PATCH', path, body); },
+  delete(path) { return this.request('DELETE', path); },
 };
 
 function escapeHtml(str) {

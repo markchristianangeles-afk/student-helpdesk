@@ -73,6 +73,19 @@ CREATE TABLE IF NOT EXISTS notifications (
   FOREIGN KEY (user_id) REFERENCES users(id),
   FOREIGN KEY (ticket_id) REFERENCES tickets(id)
 );
+
+CREATE TABLE IF NOT EXISTS activity_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_id INTEGER,
+  actor_name TEXT NOT NULL,
+  actor_role TEXT NOT NULL,
+  action TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id INTEGER,
+  message TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (actor_id) REFERENCES users(id)
+);
 `);
 
 function ensureColumn(table, column, definition) {
@@ -83,6 +96,9 @@ function ensureColumn(table, column, definition) {
 }
 
 ensureColumn('users', 'section', 'TEXT');
+ensureColumn('tickets', 'approver_id', 'INTEGER');
+ensureColumn('tickets', 'approval_status', 'TEXT');
+ensureColumn('tickets', 'approved_at', 'TEXT');
 
 const defaultCategories = ['IT Support', 'Academic', 'Administrative', 'Facilities', 'Physics Lab Equipment Borrowing', 'Other'];
 const insertCategory = db.prepare('INSERT OR IGNORE INTO categories (name) VALUES (?)');

@@ -52,6 +52,10 @@
         <div class="col-md-3">Assigned to: <span id="ticketAssignee"></span></div>
         <div class="col-md-3">Created: <span id="ticketCreated"></span></div>
       </div>
+      <div class="row small text-muted mt-2">
+        <div class="col-md-3">Approver: <span id="ticketApprover"></span></div>
+        <div class="col-md-3">Approval Status: <span id="ticketApprovalStatus"></span></div>
+      </div>
     </div>
   </div>
 
@@ -83,6 +87,23 @@
         </div>
         <div class="col-md-2">
           <button class="btn btn-primary w-100" id="saveTicketBtn">Save</button>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Approver</label>
+          <select id="approverSelect" class="form-select"></select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-4 d-none" id="approvalCard">
+    <div class="card-body">
+      <h6>Approval</h6>
+      <div class="d-flex align-items-center gap-3">
+        <span id="approvalStatusBadge" class="badge"></span>
+        <div id="approvalActions" class="d-none d-flex gap-2">
+          <button class="btn btn-sm btn-success" id="approveBtn">Approve</button>
+          <button class="btn btn-sm btn-danger" id="rejectBtn">Reject</button>
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const notify = require('../utils/notify');
+const logActivity = require('../utils/logActivity');
 
 const router = express.Router();
 
@@ -12,6 +13,7 @@ const TICKET_SELECT = `
          c.name AS category_name,
          creator.name AS creator_name, creator.email AS creator_email, creator.section AS creator_section,
          assignee.name AS assignee_name, assignee.email AS assignee_email,
+         approver.name AS approver_name, approver.email AS approver_email,
          er.equipment_name AS equipment_name,
          er.quantity AS equipment_quantity,
          er.borrow_date AS equipment_borrow_date,
@@ -20,6 +22,7 @@ const TICKET_SELECT = `
   LEFT JOIN categories c ON c.id = t.category_id
   LEFT JOIN users creator ON creator.id = t.created_by
   LEFT JOIN users assignee ON assignee.id = t.assigned_to
+  LEFT JOIN users approver ON approver.id = t.approver_id
   LEFT JOIN equipment_requests er ON er.ticket_id = t.id
 `;
 
@@ -87,6 +90,8 @@ router.post('/', requireAuth, requireRole('student'), (req, res) => {
     notify(s.id, `New ticket submitted: "${subject.trim()}"`, info.lastInsertRowid);
   }
 
+  logActivity(req.user, 'create', 'ticket', info.lastInsertRowid, `Submitted ticket "${subject.trim()}"`);
+
   const ticket = db.prepare(TICKET_SELECT + ' WHERE t.id = ?').get(info.lastInsertRowid);
   res.status(201).json({ ticket });
 });
@@ -125,7 +130,7 @@ router.patch('/:id', requireAuth, requireRole('admin', 'super_admin'), (req, res
 
   const validPriorities = ['low', 'medium', 'high', 'urgent'];
 
-  const { status, priority, assigned_to, category_id } = req.body || {};
+  const { status, priority, assigned_to, category_id, approver_id } = req.body || {};
   const validStatuses = ['open', 'in_progress', 'resolved', 'closed'];
 
   const next = {
@@ -133,16 +138,23 @@ router.patch('/:id', requireAuth, requireRole('admin', 'super_admin'), (req, res
     priority: priority && validPriorities.includes(priority) ? priority : ticket.priority,
     assigned_to: assigned_to !== undefined ? (assigned_to || null) : ticket.assigned_to,
     category_id: category_id !== undefined ? (category_id || null) : ticket.category_id,
+    approver_id: approver_id !== undefined ? (approver_id || null) : ticket.approver_id,
   };
+
+  const approverChanged = next.approver_id !== ticket.approver_id;
+  const nextApprovalStatus = approverChanged
+    ? (next.approver_id ? 'pending' : null)
+    : ticket.approval_status;
+  const nextApprovedAt = approverChanged ? null : ticket.approved_at;
 
   const now = new Date().toISOString();
   const resolvedAt = (next.status === 'resolved' || next.status === 'closed')
     ? (ticket.resolved_at || now)
     : null;
 
-  db.prepare(`UPDATE tickets SET status = ?, priority = ?, assigned_to = ?, category_id = ?, updated_at = ?, resolved_at = ?
+  db.prepare(`UPDATE tickets SET status = ?, priority = ?, assigned_to = ?, category_id = ?, approver_id = ?, approval_status = ?, approved_at = ?, updated_at = ?, resolved_at = ?
               WHERE id = ?`)
-    .run(next.status, next.priority, next.assigned_to, next.category_id, now, resolvedAt, ticket.id);
+    .run(next.status, next.priority, next.assigned_to, next.category_id, next.approver_id, nextApprovalStatus, nextApprovedAt, now, resolvedAt, ticket.id);
 
   if (next.status !== ticket.status) {
     notify(ticket.created_by, `Your ticket "${ticket.subject}" is now ${next.status.replace('_', ' ')}`, ticket.id);
@@ -150,6 +162,55 @@ router.patch('/:id', requireAuth, requireRole('admin', 'super_admin'), (req, res
   if (next.assigned_to && next.assigned_to !== ticket.assigned_to) {
     notify(next.assigned_to, `You were assigned to ticket "${ticket.subject}"`, ticket.id);
   }
+  if (approverChanged && next.approver_id) {
+    notify(next.approver_id, `You were designated as approver for ticket "${ticket.subject}"`, ticket.id);
+  }
+
+  const changes = [];
+  if (next.status !== ticket.status) changes.push(`status ${ticket.status} → ${next.status}`);
+  if (next.priority !== ticket.priority) changes.push(`priority ${ticket.priority} → ${next.priority}`);
+  if (next.assigned_to !== ticket.assigned_to) {
+    const assigneeName = next.assigned_to
+      ? db.prepare('SELECT name FROM users WHERE id = ?').get(next.assigned_to)?.name
+      : 'Unassigned';
+    changes.push(`assigned to ${assigneeName}`);
+  }
+  if (approverChanged) {
+    const approverName = next.approver_id
+      ? db.prepare('SELECT name FROM users WHERE id = ?').get(next.approver_id)?.name
+      : 'No approver';
+    changes.push(`approver set to ${approverName}`);
+  }
+  if (changes.length > 0) {
+    logActivity(req.user, 'update', 'ticket', ticket.id, `Updated ticket "${ticket.subject}" (${changes.join(', ')})`);
+  }
+
+  const updated = db.prepare(TICKET_SELECT + ' WHERE t.id = ?').get(ticket.id);
+  res.json({ ticket: updated });
+});
+
+router.patch('/:id/approval', requireAuth, requireRole('admin', 'super_admin'), (req, res) => {
+  const ticket = loadTicketOr404(req, res);
+  if (!ticket) return;
+
+  if (!ticket.approver_id) {
+    return res.status(400).json({ error: 'No approver has been assigned to this ticket yet' });
+  }
+  if (req.user.id !== ticket.approver_id && req.user.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Only the designated approver can record a decision' });
+  }
+
+  const { decision } = req.body || {};
+  if (!['approved', 'rejected'].includes(decision)) {
+    return res.status(400).json({ error: 'Decision must be either "approved" or "rejected"' });
+  }
+
+  const now = new Date().toISOString();
+  db.prepare('UPDATE tickets SET approval_status = ?, approved_at = ?, updated_at = ? WHERE id = ?')
+    .run(decision, now, now, ticket.id);
+
+  notify(ticket.created_by, `Your ticket "${ticket.subject}" was ${decision} by the approver`, ticket.id);
+  logActivity(req.user, 'update', 'ticket', ticket.id, `${decision === 'approved' ? 'Approved' : 'Rejected'} ticket "${ticket.subject}"`);
 
   const updated = db.prepare(TICKET_SELECT + ' WHERE t.id = ?').get(ticket.id);
   res.json({ ticket: updated });
@@ -187,6 +248,8 @@ router.post('/:id/comments', requireAuth, (req, res) => {
   for (const uid of recipients) {
     notify(uid, `New comment on ticket "${ticket.subject}"`, ticket.id);
   }
+
+  logActivity(req.user, 'comment', 'ticket', ticket.id, `Commented on ticket "${ticket.subject}"`);
 
   const comment = db.prepare(`
     SELECT cm.*, u.name AS author_name, u.role AS author_role

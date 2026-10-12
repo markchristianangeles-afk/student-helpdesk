@@ -36,11 +36,47 @@ const Helpdesk = {
       { href: '/tickets.html', label: 'Tickets', roles: ['student', 'admin', 'super_admin'] },
       { href: '/reports.html', label: 'Reports', roles: ['admin', 'super_admin'] },
       { href: '/users.html', label: 'Users', roles: ['super_admin'] },
+      { href: '/categories.html', label: 'Categories', roles: ['super_admin'] },
+      { href: '/activity.html', label: 'Activity Log', roles: ['admin', 'super_admin'] },
     ].filter(l => l.roles.includes(role));
 
     const current = window.location.pathname;
+    const isSuperAdmin = role === 'super_admin';
+    document.body.classList.toggle('has-sidebar', isSuperAdmin);
 
-    el.innerHTML = `
+    const notifBell = `
+      <div class="dropdown">
+        <button class="btn btn-sm btn-outline-light position-relative" id="bellToggle" data-bs-toggle="dropdown" type="button">
+          <i class="bi bi-bell"></i>
+          <span id="notifBadge" class="badge bg-danger rounded-pill position-absolute top-0 start-100 translate-middle d-none">0</span>
+        </button>
+        <div class="dropdown-menu dropdown-menu-end p-2" style="width:300px; max-height:350px; overflow:auto;" id="notifList">
+          <div class="text-muted small p-2">No notifications</div>
+        </div>
+      </div>
+    `;
+
+    const navHtml = isSuperAdmin ? `
+      <button class="sidebar-mobile-toggle d-lg-none" id="sidebarToggleBtn" type="button" aria-label="Open menu">
+        <i class="bi bi-list"></i> <span class="ms-2 fw-semibold">Student Helpdesk</span>
+      </button>
+      <div class="sidebar-backdrop d-lg-none" id="sidebarBackdrop"></div>
+      <div class="app-sidebar" id="appSidebar">
+        <div class="sidebar-brand">Student Helpdesk</div>
+        <nav class="sidebar-nav flex-grow-1">
+          ${links.map(l => `<a href="${l.href}" class="sidebar-link ${current.endsWith(l.href) ? 'active' : ''}">${l.label}</a>`).join('')}
+        </nav>
+        <div class="sidebar-footer">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <button class="btn btn-sm btn-outline-light" id="themeToggleBtn" title="Toggle light/dark theme"></button>
+            ${notifBell}
+          </div>
+          <div class="small text-light mb-2" id="navbarUserLabel">${escapeHtml(this.user.name)} <span class="badge bg-light text-dark">${this.roleLabel(role)}</span></div>
+          <button class="btn btn-sm btn-outline-light w-100 mb-2" id="profileBtn" data-bs-toggle="modal" data-bs-target="#profileModal">Edit Profile</button>
+          <button class="btn btn-sm btn-outline-light w-100" id="logoutBtn">Logout</button>
+        </div>
+      </div>
+    ` : `
       <nav class="navbar navbar-expand-lg navbar-dark app-navbar mb-4">
         <div class="container">
           <a class="navbar-brand" href="/dashboard.html">Student Helpdesk</a>
@@ -56,13 +92,7 @@ const Helpdesk = {
                 <button class="btn btn-outline-light btn-sm" id="themeToggleBtn" title="Toggle light/dark theme"></button>
               </li>
               <li class="nav-item dropdown me-2">
-                <a class="nav-link position-relative" href="#" id="bellToggle" data-bs-toggle="dropdown">
-                  <i class="bi bi-bell"></i>
-                  <span id="notifBadge" class="badge bg-danger rounded-pill position-absolute top-0 start-100 translate-middle d-none">0</span>
-                </a>
-                <div class="dropdown-menu dropdown-menu-end p-2" style="width:320px; max-height:400px; overflow:auto;" id="notifList">
-                  <div class="text-muted small p-2">No notifications</div>
-                </div>
+                ${notifBell}
               </li>
               <li class="nav-item">
                 <span class="navbar-text text-light me-3" id="navbarUserLabel">${escapeHtml(this.user.name)} <span class="badge bg-secondary">${this.roleLabel(role)}</span></span>
@@ -77,7 +107,9 @@ const Helpdesk = {
           </div>
         </div>
       </nav>
+    `;
 
+    el.innerHTML = navHtml + `
       <div class="modal fade" id="profileModal" tabindex="-1">
         <div class="modal-dialog">
           <div class="modal-content">
@@ -128,6 +160,21 @@ const Helpdesk = {
       await api.post('/auth/logout');
       window.location.href = '/index.html';
     });
+
+    if (isSuperAdmin) {
+      const sidebar = document.getElementById('appSidebar');
+      const backdrop = document.getElementById('sidebarBackdrop');
+      const toggleBtn = document.getElementById('sidebarToggleBtn');
+      const closeSidebar = () => {
+        sidebar.classList.remove('show');
+        backdrop.classList.remove('show');
+      };
+      toggleBtn.addEventListener('click', () => {
+        sidebar.classList.toggle('show');
+        backdrop.classList.toggle('show');
+      });
+      backdrop.addEventListener('click', closeSidebar);
+    }
 
     Theme.bindToggleButton(document.getElementById('themeToggleBtn'));
     this.bindProfileModal();

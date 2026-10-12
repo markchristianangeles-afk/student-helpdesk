@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { validateEmailOrThrow } = require('../utils/validateEmail');
+const logActivity = require('../utils/logActivity');
 
 const router = express.Router();
 
@@ -52,18 +53,38 @@ router.post('/', requireAuth, requireRole('super_admin'), async (req, res) => {
 
   const user = db.prepare('SELECT id, name, email, role, is_active, created_at FROM users WHERE id = ?')
     .get(info.lastInsertRowid);
+
+  logActivity(req.user, 'create', 'user', user.id, `Created ${role} account for ${user.email}`);
+
   res.status(201).json({ user });
 });
 
-router.patch('/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+router.patch('/:id', requireAuth, requireRole('super_admin'), async (req, res) => {
   const id = Number(req.params.id);
   const target = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   if (!target) return res.status(404).json({ error: 'User not found' });
 
-  const { name, role, is_active, password } = req.body || {};
+  const { name, email, role, is_active, password } = req.body || {};
 
   if (role && !['super_admin', 'admin', 'student'].includes(role)) {
     return res.status(400).json({ error: 'Invalid role' });
+  }
+
+  if (name !== undefined && !name.trim()) {
+    return res.status(400).json({ error: 'Name cannot be empty' });
+  }
+
+  let nextEmail = target.email;
+  if (email !== undefined && email.trim().toLowerCase() !== target.email) {
+    try {
+      await validateEmailOrThrow(email);
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
+    }
+    const existing = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?')
+      .get(email.trim().toLowerCase(), id);
+    if (existing) return res.status(409).json({ error: 'An account with this email already exists' });
+    nextEmail = email.trim().toLowerCase();
   }
 
   const demotingOrDeactivatingSuperAdmin =
@@ -80,18 +101,31 @@ router.patch('/:id', requireAuth, requireRole('super_admin'), (req, res) => {
   }
 
   const next = {
-    name: name !== undefined ? name : target.name,
+    name: name !== undefined ? name.trim() : target.name,
+    email: nextEmail,
     role: role !== undefined ? role : target.role,
     is_active: is_active !== undefined ? (is_active ? 1 : 0) : target.is_active,
   };
 
-  db.prepare('UPDATE users SET name = ?, role = ?, is_active = ? WHERE id = ?')
-    .run(next.name, next.role, next.is_active, id);
+  db.prepare('UPDATE users SET name = ?, email = ?, role = ?, is_active = ? WHERE id = ?')
+    .run(next.name, next.email, next.role, next.is_active, id);
 
+  let passwordReset = false;
   if (password) {
     if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
     const hash = bcrypt.hashSync(password, 10);
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, id);
+    passwordReset = true;
+  }
+
+  const changes = [];
+  if (next.name !== target.name) changes.push(`name changed to "${next.name}"`);
+  if (next.email !== target.email) changes.push(`email changed to ${next.email}`);
+  if (next.role !== target.role) changes.push(`role ${target.role} → ${next.role}`);
+  if (next.is_active !== target.is_active) changes.push(next.is_active ? 'activated' : 'deactivated');
+  if (passwordReset) changes.push('password reset');
+  if (changes.length > 0) {
+    logActivity(req.user, 'update', 'user', id, `Updated ${target.email} (${changes.join(', ')})`);
   }
 
   const user = db.prepare('SELECT id, name, email, role, is_active, created_at FROM users WHERE id = ?').get(id);

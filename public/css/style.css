@@ -86,3 +86,106 @@ body {
 #notifList {
   font-size: 0.875rem;
 }
+
+/* Sidebar layout (Super Admin only) */
+body.has-sidebar {
+  padding-left: 240px;
+}
+
+.app-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 240px;
+  background: linear-gradient(180deg, #4338ca, #312e81);
+  z-index: 1030;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  transition: transform 0.2s ease;
+}
+
+.app-sidebar .sidebar-brand {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #fff;
+  padding: 1.1rem 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.app-sidebar .sidebar-nav {
+  padding: 0.75rem 0;
+}
+
+.app-sidebar .sidebar-link {
+  display: block;
+  padding: 0.65rem 1.25rem;
+  color: rgba(255, 255, 255, 0.85);
+  text-decoration: none;
+  border-left: 3px solid transparent;
+}
+
+.app-sidebar .sidebar-link:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.app-sidebar .sidebar-link.active {
+  background: rgba(255, 255, 255, 0.12);
+  border-left-color: #fff;
+  color: #fff;
+  font-weight: 600;
+}
+
+.app-sidebar .sidebar-footer {
+  margin-top: auto;
+  padding: 1rem 1.25rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.sidebar-mobile-toggle {
+  display: none;
+}
+
+.sidebar-backdrop {
+  display: none;
+}
+
+@media (max-width: 991.98px) {
+  body.has-sidebar {
+    padding-left: 0;
+    padding-top: 56px;
+  }
+
+  .app-sidebar {
+    transform: translateX(-100%);
+  }
+
+  .app-sidebar.show {
+    transform: translateX(0);
+  }
+
+  .sidebar-mobile-toggle {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 0.75rem 1.25rem;
+    background: linear-gradient(135deg, #4338ca, #312e81);
+    color: #fff;
+    border: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1020;
+  }
+
+  .sidebar-backdrop.show {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 1025;
+  }
+}

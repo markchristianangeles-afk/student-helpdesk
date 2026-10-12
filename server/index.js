@@ -10,6 +10,7 @@ const userRoutes = require('./routes/users');
 const ticketRoutes = require('./routes/tickets');
 const notificationRoutes = require('./routes/notifications');
 const reportRoutes = require('./routes/reports');
+const activityRoutes = require('./routes/activity');
 
 const app = express();
 
@@ -26,6 +27,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/activity', activityRoutes);
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 

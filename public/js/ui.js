@@ -25,6 +25,7 @@ function renderTicketTable(tickets, opts = {}) {
               <th>Priority</th>
               <th>Status</th>
               ${showAssignee ? '<th>Assigned To</th>' : ''}
+              ${showAssignee ? '<th>Approver</th>' : ''}
               <th>Created</th>
             </tr>
           </thead>
@@ -36,6 +37,7 @@ function renderTicketTable(tickets, opts = {}) {
                 <td><span class="badge rounded-pill badge-priority-${t.priority}">${t.priority}</span></td>
                 <td><span class="badge rounded-pill badge-status-${t.status}">${t.status.replace('_', ' ')}</span></td>
                 ${showAssignee ? `<td>${t.assignee_name ? escapeHtml(t.assignee_name) : '<span class="text-muted">Unassigned</span>'}</td>` : ''}
+                ${showAssignee ? `<td>${renderApproverCell(t)}</td>` : ''}
                 <td>${new Date(t.created_at).toLocaleDateString()}</td>
               </tr>
             `).join('')}
@@ -44,6 +46,12 @@ function renderTicketTable(tickets, opts = {}) {
       </div>
     </div>
   `;
+}
+
+function renderApproverCell(t) {
+  if (!t.approver_name) return '<span class="text-muted">—</span>';
+  const badgeColor = { pending: 'warning', approved: 'success', rejected: 'danger' }[t.approval_status] || 'secondary';
+  return `${escapeHtml(t.approver_name)} <span class="badge bg-${badgeColor}">${t.approval_status}</span>`;
 }
 
 function escapeHtml(str) {

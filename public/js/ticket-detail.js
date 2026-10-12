@@ -54,6 +54,10 @@ async function loadTicket(user) {
   document.getElementById('ticketSection').textContent = ticket.creator_section || 'Not set';
   document.getElementById('ticketAssignee').textContent = ticket.assignee_name || 'Unassigned';
   document.getElementById('ticketCreated').textContent = new Date(ticket.created_at).toLocaleString();
+  document.getElementById('ticketApprover').textContent = ticket.approver_name || 'Not set';
+  document.getElementById('ticketApprovalStatus').textContent = ticket.approval_status
+    ? ticket.approval_status.charAt(0).toUpperCase() + ticket.approval_status.slice(1)
+    : 'N/A';
 
   const isStaff = user.role === 'admin' || user.role === 'super_admin';
 
@@ -66,15 +70,46 @@ async function loadTicket(user) {
     const assignSelect = document.getElementById('assigneeSelect');
     assignSelect.innerHTML = '<option value="">Unassigned</option>' +
       users.map(u => `<option value="${u.id}" ${u.id === ticket.assigned_to ? 'selected' : ''}>${escapeHtml(u.name)}</option>`).join('');
+    const approverSelect = document.getElementById('approverSelect');
+    approverSelect.innerHTML = '<option value="">No approver</option>' +
+      users.map(u => `<option value="${u.id}" ${u.id === ticket.approver_id ? 'selected' : ''}>${escapeHtml(u.name)}</option>`).join('');
 
     document.getElementById('saveTicketBtn').onclick = async () => {
       await api.patch(`/tickets/${ticketId}`, {
         status: document.getElementById('statusSelect').value,
         priority: document.getElementById('prioritySelect').value,
         assigned_to: assignSelect.value || null,
+        approver_id: approverSelect.value || null,
       });
       await loadTicket(user);
     };
+  }
+
+  const approvalCard = document.getElementById('approvalCard');
+  if (isStaff && ticket.approver_id) {
+    approvalCard.classList.remove('d-none');
+    const badge = document.getElementById('approvalStatusBadge');
+    const badgeColor = { pending: 'warning', approved: 'success', rejected: 'danger' }[ticket.approval_status] || 'secondary';
+    badge.className = `badge bg-${badgeColor}`;
+    badge.textContent = `${ticket.approval_status} — approver: ${ticket.approver_name}`;
+
+    const actions = document.getElementById('approvalActions');
+    const canDecide = ticket.approval_status === 'pending' &&
+      (user.id === ticket.approver_id || user.role === 'super_admin');
+    actions.classList.toggle('d-none', !canDecide);
+
+    if (canDecide) {
+      document.getElementById('approveBtn').onclick = async () => {
+        await api.patch(`/tickets/${ticketId}/approval`, { decision: 'approved' });
+        await loadTicket(user);
+      };
+      document.getElementById('rejectBtn').onclick = async () => {
+        await api.patch(`/tickets/${ticketId}/approval`, { decision: 'rejected' });
+        await loadTicket(user);
+      };
+    }
+  } else {
+    approvalCard.classList.add('d-none');
   }
 }
 

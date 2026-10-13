@@ -34,10 +34,12 @@ async function loadUsers() {
     <tr data-row-id="${u.id}">
       <td><input type="text" class="form-control form-control-sm" data-field="name" value="${escapeHtml(u.name)}" disabled></td>
       <td><input type="email" class="form-control form-control-sm" data-field="email" value="${escapeHtml(u.email)}" disabled></td>
+      <td><input type="text" class="form-control form-control-sm" data-field="section" value="${u.section ? escapeHtml(u.section) : ''}" placeholder="e.g., BSIT-3A" disabled></td>
       <td>
         <select class="form-select form-select-sm" data-id="${u.id}" data-field="role" disabled>
           <option value="student" ${u.role === 'student' ? 'selected' : ''}>Student</option>
           <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+          <option value="approver" ${u.role === 'approver' ? 'selected' : ''}>Approver</option>
           <option value="super_admin" ${u.role === 'super_admin' ? 'selected' : ''}>Super Admin</option>
         </select>
       </td>
@@ -68,6 +70,7 @@ async function loadUsers() {
       const row = btn.closest('tr');
       row.querySelector('[data-field="name"]').disabled = false;
       row.querySelector('[data-field="email"]').disabled = false;
+      row.querySelector('[data-field="section"]').disabled = false;
       row.querySelector('[data-field="role"]').disabled = false;
       row.querySelector('[data-field="is_active"]').disabled = false;
       row.querySelector('[data-save-id]').disabled = false;
@@ -81,6 +84,7 @@ async function loadUsers() {
       const row = btn.closest('tr');
       const name = row.querySelector('[data-field="name"]').value.trim();
       const email = row.querySelector('[data-field="email"]').value.trim();
+      const section = row.querySelector('[data-field="section"]').value.trim();
       const role = row.querySelector('[data-field="role"]').value;
       const is_active = row.querySelector('[data-field="is_active"]').checked ? 1 : 0;
 
@@ -88,7 +92,7 @@ async function loadUsers() {
       btn.disabled = true;
       btn.textContent = 'Saving...';
       try {
-        await api.patch(`/users/${id}`, { name, email, role, is_active });
+        await api.patch(`/users/${id}`, { name, email, section, role, is_active });
         btn.classList.remove('btn-outline-primary', 'btn-danger');
         btn.classList.add('btn-success');
         btn.textContent = 'Saved';

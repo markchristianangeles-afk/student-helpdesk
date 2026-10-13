@@ -20,6 +20,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       ['Closed', counts.closed, 'secondary'],
     ]);
     recentList.innerHTML = renderTicketTable(tickets.slice(0, 5));
+  } else if (user.role === 'approver') {
+    quickActions.innerHTML = `<a href="/tickets.html" class="btn btn-primary">Review My Approvals</a>`;
+    const { tickets } = await api.get('/tickets');
+    const counts = { pending: 0, approved: 0, rejected: 0 };
+    tickets.forEach(t => { if (t.approval_status) counts[t.approval_status] = (counts[t.approval_status] || 0) + 1; });
+    statsRow.innerHTML = renderStatCards([
+      ['Pending', counts.pending, 'warning'],
+      ['Approved', counts.approved, 'success'],
+      ['Rejected', counts.rejected, 'danger'],
+      ['Total', tickets.length, 'dark'],
+    ]);
+    recentList.innerHTML = renderTicketTable(tickets.slice(0, 5), { showAssignee: true });
   } else {
     quickActions.innerHTML = `
       <a href="/tickets.html" class="btn btn-primary me-2">Manage Tickets</a>

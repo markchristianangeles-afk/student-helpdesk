@@ -23,7 +23,7 @@ const Helpdesk = {
   },
 
   roleLabel(role) {
-    return { super_admin: 'Super Admin', admin: 'Admin', student: 'Student' }[role] || role;
+    return { super_admin: 'Super Admin', admin: 'Admin', approver: 'Approver', student: 'Student' }[role] || role;
   },
 
   renderNav() {
@@ -32,8 +32,8 @@ const Helpdesk = {
     const role = this.user.role;
 
     const links = [
-      { href: '/dashboard.html', label: 'Dashboard', roles: ['student', 'admin', 'super_admin'] },
-      { href: '/tickets.html', label: 'Tickets', roles: ['student', 'admin', 'super_admin'] },
+      { href: '/dashboard.html', label: 'Dashboard', roles: ['student', 'admin', 'approver', 'super_admin'] },
+      { href: '/tickets.html', label: 'Tickets', roles: ['student', 'admin', 'approver', 'super_admin'] },
       { href: '/reports.html', label: 'Reports', roles: ['admin', 'super_admin'] },
       { href: '/users.html', label: 'Users', roles: ['super_admin'] },
       { href: '/categories.html', label: 'Categories', roles: ['super_admin'] },

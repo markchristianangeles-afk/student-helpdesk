@@ -26,9 +26,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     try {
-      await api.post('/auth/register', { name, section, email, password });
-      window.location.href = '/dashboard.html';
+      const result = await api.post('/auth/register', { name, section, email, password });
+      form.classList.add('d-none');
+      alertBox.classList.remove('d-none', 'alert-danger');
+      alertBox.classList.add('alert-success');
+      alertBox.textContent = result.message || 'Account created. Please check your email to verify your account before logging in.';
     } catch (err) {
+      alertBox.classList.remove('alert-success');
+      alertBox.classList.add('alert-danger');
       alertBox.textContent = err.message;
       alertBox.classList.remove('d-none');
     }

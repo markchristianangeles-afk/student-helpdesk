@@ -1,28 +1,35 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const db = require('../db');
+const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { validateEmailOrThrow } = require('../utils/validateEmail');
 const logActivity = require('../utils/logActivity');
 
 const router = express.Router();
 
-router.get('/', requireAuth, requireRole('super_admin'), (req, res) => {
+router.get('/', requireAuth, requireRole('super_admin'), async (req, res) => {
   const { role, q } = req.query;
-  let sql = 'SELECT id, name, email, role, is_active, created_at FROM users WHERE 1=1';
+  let sql = 'SELECT id, name, email, role, is_active, section, created_at FROM users WHERE 1=1';
   const params = [];
-  if (role) { sql += ' AND role = ?'; params.push(role); }
-  if (q) { sql += ' AND (name LIKE ? OR email LIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
+  if (role) { params.push(role); sql += ` AND role = $${params.length}`; }
+  if (q) { params.push(`%${q}%`); sql += ` AND (name ILIKE $${params.length} OR email ILIKE $${params.length})`; }
   sql += ' ORDER BY created_at DESC';
-  const users = db.prepare(sql).all(...params);
-  res.json({ users });
+  const { rows } = await pool.query(sql, params);
+  res.json({ users: rows });
 });
 
-router.get('/assignable', requireAuth, requireRole('super_admin', 'admin'), (req, res) => {
-  const users = db.prepare(
+router.get('/assignable', requireAuth, requireRole('super_admin', 'admin'), async (req, res) => {
+  const { rows } = await pool.query(
     `SELECT id, name, email, role FROM users WHERE role IN ('admin','super_admin') AND is_active = 1 ORDER BY name`
-  ).all();
-  res.json({ users });
+  );
+  res.json({ users: rows });
+});
+
+router.get('/approvers', requireAuth, requireRole('super_admin', 'admin'), async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT id, name, email FROM users WHERE role = 'approver' AND is_active = 1 ORDER BY name`
+  );
+  res.json({ users: rows });
 });
 
 router.post('/', requireAuth, requireRole('super_admin'), async (req, res) => {
@@ -30,7 +37,7 @@ router.post('/', requireAuth, requireRole('super_admin'), async (req, res) => {
   if (!name || !email || !password || !role) {
     return res.status(400).json({ error: 'Name, email, password and role are required' });
   }
-  if (!['super_admin', 'admin', 'student'].includes(role)) {
+  if (!['super_admin', 'admin', 'approver', 'student'].includes(role)) {
     return res.status(400).json({ error: 'Invalid role' });
   }
   if (password.length < 6) {
@@ -43,30 +50,32 @@ router.post('/', requireAuth, requireRole('super_admin'), async (req, res) => {
     return res.status(err.status || 400).json({ error: err.message });
   }
 
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email.toLowerCase());
-  if (existing) return res.status(409).json({ error: 'An account with this email already exists' });
+  const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
+  if (existing.rows.length > 0) return res.status(409).json({ error: 'An account with this email already exists' });
 
   const hash = bcrypt.hashSync(password, 10);
-  const info = db.prepare(`INSERT INTO users (name, email, password_hash, role, is_active, created_at)
-                            VALUES (?, ?, ?, ?, 1, ?)`)
-    .run(name, email.toLowerCase(), hash, role, new Date().toISOString());
+  const inserted = await pool.query(
+    `INSERT INTO users (name, email, password_hash, role, is_active, created_at)
+     VALUES ($1, $2, $3, $4, 1, $5)
+     RETURNING id, name, email, role, is_active, section, created_at`,
+    [name, email.toLowerCase(), hash, role, new Date().toISOString()]
+  );
 
-  const user = db.prepare('SELECT id, name, email, role, is_active, created_at FROM users WHERE id = ?')
-    .get(info.lastInsertRowid);
-
-  logActivity(req.user, 'create', 'user', user.id, `Created ${role} account for ${user.email}`);
+  const user = inserted.rows[0];
+  await logActivity(req.user, 'create', 'user', user.id, `Created ${role} account for ${user.email}`);
 
   res.status(201).json({ user });
 });
 
 router.patch('/:id', requireAuth, requireRole('super_admin'), async (req, res) => {
   const id = Number(req.params.id);
-  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  const { rows: targetRows } = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+  const target = targetRows[0];
   if (!target) return res.status(404).json({ error: 'User not found' });
 
-  const { name, email, role, is_active, password } = req.body || {};
+  const { name, email, role, is_active, password, section } = req.body || {};
 
-  if (role && !['super_admin', 'admin', 'student'].includes(role)) {
+  if (role && !['super_admin', 'admin', 'approver', 'student'].includes(role)) {
     return res.status(400).json({ error: 'Invalid role' });
   }
 
@@ -81,9 +90,8 @@ router.patch('/:id', requireAuth, requireRole('super_admin'), async (req, res) =
     } catch (err) {
       return res.status(err.status || 400).json({ error: err.message });
     }
-    const existing = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?')
-      .get(email.trim().toLowerCase(), id);
-    if (existing) return res.status(409).json({ error: 'An account with this email already exists' });
+    const existing = await pool.query('SELECT id FROM users WHERE email = $1 AND id != $2', [email.trim().toLowerCase(), id]);
+    if (existing.rows.length > 0) return res.status(409).json({ error: 'An account with this email already exists' });
     nextEmail = email.trim().toLowerCase();
   }
 
@@ -92,10 +100,10 @@ router.patch('/:id', requireAuth, requireRole('super_admin'), async (req, res) =
     ((role && role !== 'super_admin') || is_active === 0 || is_active === false);
 
   if (demotingOrDeactivatingSuperAdmin) {
-    const otherSuperAdmins = db.prepare(
-      "SELECT COUNT(*) AS c FROM users WHERE role = 'super_admin' AND id != ?"
-    ).get(id).c;
-    if (otherSuperAdmins === 0) {
+    const { rows } = await pool.query(
+      "SELECT COUNT(*) AS c FROM users WHERE role = 'super_admin' AND id != $1", [id]
+    );
+    if (Number(rows[0].c) === 0) {
       return res.status(400).json({ error: 'Cannot demote or deactivate the last Super Admin' });
     }
   }
@@ -105,16 +113,21 @@ router.patch('/:id', requireAuth, requireRole('super_admin'), async (req, res) =
     email: nextEmail,
     role: role !== undefined ? role : target.role,
     is_active: is_active !== undefined ? (is_active ? 1 : 0) : target.is_active,
+    section: section !== undefined ? (section.trim() || null) : target.section,
   };
 
-  db.prepare('UPDATE users SET name = ?, email = ?, role = ?, is_active = ? WHERE id = ?')
-    .run(next.name, next.email, next.role, next.is_active, id);
+  if (next.role === 'student' && !next.section) {
+    return res.status(400).json({ error: 'Section is required for students' });
+  }
+
+  await pool.query('UPDATE users SET name = $1, email = $2, role = $3, is_active = $4, section = $5 WHERE id = $6',
+    [next.name, next.email, next.role, next.is_active, next.section, id]);
 
   let passwordReset = false;
   if (password) {
     if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
     const hash = bcrypt.hashSync(password, 10);
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, id);
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, id]);
     passwordReset = true;
   }
 
@@ -122,19 +135,21 @@ router.patch('/:id', requireAuth, requireRole('super_admin'), async (req, res) =
   if (next.name !== target.name) changes.push(`name changed to "${next.name}"`);
   if (next.email !== target.email) changes.push(`email changed to ${next.email}`);
   if (next.role !== target.role) changes.push(`role ${target.role} → ${next.role}`);
-  if (next.is_active !== target.is_active) changes.push(next.is_active ? 'activated' : 'deactivated');
+  if (Number(next.is_active) !== Number(target.is_active)) changes.push(Number(next.is_active) ? 'activated' : 'deactivated');
+  if (next.section !== target.section) changes.push(`section changed to "${next.section || 'none'}"`);
   if (passwordReset) changes.push('password reset');
   if (changes.length > 0) {
-    logActivity(req.user, 'update', 'user', id, `Updated ${target.email} (${changes.join(', ')})`);
+    await logActivity(req.user, 'update', 'user', id, `Updated ${target.email} (${changes.join(', ')})`);
   }
 
-  const user = db.prepare('SELECT id, name, email, role, is_active, created_at FROM users WHERE id = ?').get(id);
-  res.json({ user });
+  const { rows: userRows } = await pool.query('SELECT id, name, email, role, is_active, section, created_at FROM users WHERE id = $1', [id]);
+  res.json({ user: userRows[0] });
 });
 
-router.delete('/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+router.delete('/:id', requireAuth, requireRole('super_admin'), async (req, res) => {
   const id = Number(req.params.id);
-  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  const { rows: targetRows } = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+  const target = targetRows[0];
   if (!target) return res.status(404).json({ error: 'User not found' });
 
   if (id === req.user.id) {
@@ -142,37 +157,46 @@ router.delete('/:id', requireAuth, requireRole('super_admin'), (req, res) => {
   }
 
   if (target.role === 'super_admin') {
-    const otherSuperAdmins = db.prepare(
-      "SELECT COUNT(*) AS c FROM users WHERE role = 'super_admin' AND id != ?"
-    ).get(id).c;
-    if (otherSuperAdmins === 0) {
+    const { rows } = await pool.query(
+      "SELECT COUNT(*) AS c FROM users WHERE role = 'super_admin' AND id != $1", [id]
+    );
+    if (Number(rows[0].c) === 0) {
       return res.status(400).json({ error: 'Cannot delete the last Super Admin' });
     }
   }
 
-  const deleteUser = db.transaction((userId) => {
-    const ownTicketIds = db.prepare('SELECT id FROM tickets WHERE created_by = ?').all(userId).map(t => t.id);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows: ownTickets } = await client.query('SELECT id FROM tickets WHERE created_by = $1', [id]);
+    const ownTicketIds = ownTickets.map(t => t.id);
 
     for (const ticketId of ownTicketIds) {
-      db.prepare('DELETE FROM equipment_requests WHERE ticket_id = ?').run(ticketId);
-      db.prepare('DELETE FROM comments WHERE ticket_id = ?').run(ticketId);
-      db.prepare('DELETE FROM notifications WHERE ticket_id = ?').run(ticketId);
+      await client.query('DELETE FROM equipment_requests WHERE ticket_id = $1', [ticketId]);
+      await client.query('DELETE FROM comments WHERE ticket_id = $1', [ticketId]);
+      await client.query('DELETE FROM notifications WHERE ticket_id = $1', [ticketId]);
     }
-    db.prepare('DELETE FROM tickets WHERE created_by = ?').run(userId);
+    await client.query('DELETE FROM tickets WHERE created_by = $1', [id]);
 
-    db.prepare('UPDATE tickets SET assigned_to = NULL WHERE assigned_to = ?').run(userId);
-    db.prepare('UPDATE tickets SET approver_id = NULL, approval_status = NULL, approved_at = NULL WHERE approver_id = ?').run(userId);
+    await client.query('UPDATE tickets SET assigned_to = NULL WHERE assigned_to = $1', [id]);
+    await client.query('UPDATE tickets SET approver_id = NULL, approval_status = NULL, approved_at = NULL WHERE approver_id = $1', [id]);
 
-    db.prepare('DELETE FROM comments WHERE user_id = ?').run(userId);
-    db.prepare('DELETE FROM notifications WHERE user_id = ?').run(userId);
-    db.prepare('UPDATE activity_log SET actor_id = NULL WHERE actor_id = ?').run(userId);
+    await client.query('DELETE FROM comments WHERE user_id = $1', [id]);
+    await client.query('DELETE FROM notifications WHERE user_id = $1', [id]);
+    await client.query('UPDATE activity_log SET actor_id = NULL WHERE actor_id = $1', [id]);
 
-    db.prepare('DELETE FROM users WHERE id = ?').run(userId);
-  });
+    await client.query('DELETE FROM users WHERE id = $1', [id]);
 
-  deleteUser(id);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 
-  logActivity(req.user, 'delete', 'user', id, `Deleted ${target.role} account ${target.email}`);
+  await logActivity(req.user, 'delete', 'user', id, `Deleted ${target.role} account ${target.email}`);
 
   res.json({ ok: true });
 });

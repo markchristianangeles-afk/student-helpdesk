@@ -1,5 +1,5 @@
 const express = require('express');
-const db = require('../db');
+const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const notify = require('../utils/notify');
 const logActivity = require('../utils/logActivity');
@@ -30,9 +30,10 @@ function isValidDateString(value) {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
 }
 
-function loadTicketOr404(req, res) {
+async function loadTicketOr404(req, res) {
   const id = Number(req.params.id);
-  const ticket = db.prepare(TICKET_SELECT + ' WHERE t.id = ?').get(id);
+  const { rows } = await pool.query(TICKET_SELECT + ' WHERE t.id = $1', [id]);
+  const ticket = rows[0];
   if (!ticket) {
     res.status(404).json({ error: 'Ticket not found' });
     return null;
@@ -42,10 +43,11 @@ function loadTicketOr404(req, res) {
 
 function canAccessTicket(user, ticket) {
   if (user.role === 'super_admin' || user.role === 'admin') return true;
+  if (user.role === 'approver') return ticket.approver_id === user.id;
   return ticket.created_by === user.id;
 }
 
-router.post('/', requireAuth, requireRole('student'), (req, res) => {
+router.post('/', requireAuth, requireRole('student'), async (req, res) => {
   const { subject, description, category_id, priority, equipment_name, equipment_quantity, borrow_date, return_date } = req.body || {};
   if (!subject || !subject.trim() || !description || !description.trim()) {
     return res.status(400).json({ error: 'Subject and description are required' });
@@ -53,7 +55,11 @@ router.post('/', requireAuth, requireRole('student'), (req, res) => {
   const validPriorities = ['low', 'medium', 'high', 'urgent'];
   const finalPriority = validPriorities.includes(priority) ? priority : 'medium';
 
-  const category = category_id ? db.prepare('SELECT * FROM categories WHERE id = ?').get(category_id) : null;
+  let category = null;
+  if (category_id) {
+    const { rows } = await pool.query('SELECT * FROM categories WHERE id = $1', [category_id]);
+    category = rows[0] || null;
+  }
   const isEquipmentRequest = category && category.name === PHYSICS_EQUIPMENT_CATEGORY;
 
   let quantity = null;
@@ -75,57 +81,66 @@ router.post('/', requireAuth, requireRole('student'), (req, res) => {
 
   const now = new Date().toISOString();
 
-  const info = db.prepare(`INSERT INTO tickets (subject, description, category_id, priority, status, created_by, created_at, updated_at)
-                            VALUES (?, ?, ?, ?, 'open', ?, ?, ?)`)
-    .run(subject.trim(), description.trim(), category_id || null, finalPriority, req.user.id, now, now);
+  const inserted = await pool.query(
+    `INSERT INTO tickets (subject, description, category_id, priority, status, created_by, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, 'open', $5, $6, $6)
+     RETURNING id`,
+    [subject.trim(), description.trim(), category_id || null, finalPriority, req.user.id, now]
+  );
+  const ticketId = inserted.rows[0].id;
 
   if (isEquipmentRequest) {
-    db.prepare(`INSERT INTO equipment_requests (ticket_id, equipment_name, quantity, borrow_date, return_date)
-                VALUES (?, ?, ?, ?, ?)`)
-      .run(info.lastInsertRowid, equipment_name.trim(), quantity, borrow_date, return_date);
+    await pool.query(
+      `INSERT INTO equipment_requests (ticket_id, equipment_name, quantity, borrow_date, return_date)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [ticketId, equipment_name.trim(), quantity, borrow_date, return_date]
+    );
   }
 
-  const staff = db.prepare("SELECT id FROM users WHERE role IN ('admin','super_admin') AND is_active = 1").all();
+  const { rows: staff } = await pool.query("SELECT id FROM users WHERE role IN ('admin','super_admin') AND is_active = 1");
   for (const s of staff) {
-    notify(s.id, `New ticket submitted: "${subject.trim()}"`, info.lastInsertRowid);
+    await notify(s.id, `New ticket submitted: "${subject.trim()}"`, ticketId);
   }
 
-  logActivity(req.user, 'create', 'ticket', info.lastInsertRowid, `Submitted ticket "${subject.trim()}"`);
+  await logActivity(req.user, 'create', 'ticket', ticketId, `Submitted ticket "${subject.trim()}"`);
 
-  const ticket = db.prepare(TICKET_SELECT + ' WHERE t.id = ?').get(info.lastInsertRowid);
-  res.status(201).json({ ticket });
+  const { rows: ticketRows } = await pool.query(TICKET_SELECT + ' WHERE t.id = $1', [ticketId]);
+  res.status(201).json({ ticket: ticketRows[0] });
 });
 
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   const { status, priority, category_id, assigned_to, q } = req.query;
   let sql = TICKET_SELECT + ' WHERE 1=1';
   const params = [];
 
   if (req.user.role === 'student') {
-    sql += ' AND t.created_by = ?';
     params.push(req.user.id);
+    sql += ` AND t.created_by = $${params.length}`;
+  } else if (req.user.role === 'approver') {
+    params.push(req.user.id);
+    sql += ` AND t.approver_id = $${params.length}`;
   }
 
-  if (status) { sql += ' AND t.status = ?'; params.push(status); }
-  if (priority) { sql += ' AND t.priority = ?'; params.push(priority); }
-  if (category_id) { sql += ' AND t.category_id = ?'; params.push(category_id); }
-  if (assigned_to) { sql += ' AND t.assigned_to = ?'; params.push(assigned_to); }
-  if (q) { sql += ' AND t.subject LIKE ?'; params.push(`%${q}%`); }
+  if (status) { params.push(status); sql += ` AND t.status = $${params.length}`; }
+  if (priority) { params.push(priority); sql += ` AND t.priority = $${params.length}`; }
+  if (category_id) { params.push(category_id); sql += ` AND t.category_id = $${params.length}`; }
+  if (assigned_to) { params.push(assigned_to); sql += ` AND t.assigned_to = $${params.length}`; }
+  if (q) { params.push(`%${q}%`); sql += ` AND t.subject ILIKE $${params.length}`; }
 
   sql += ' ORDER BY t.created_at DESC';
-  const tickets = db.prepare(sql).all(...params);
-  res.json({ tickets });
+  const { rows } = await pool.query(sql, params);
+  res.json({ tickets: rows });
 });
 
-router.get('/:id', requireAuth, (req, res) => {
-  const ticket = loadTicketOr404(req, res);
+router.get('/:id', requireAuth, async (req, res) => {
+  const ticket = await loadTicketOr404(req, res);
   if (!ticket) return;
   if (!canAccessTicket(req.user, ticket)) return res.status(403).json({ error: 'Access denied' });
   res.json({ ticket });
 });
 
-router.patch('/:id', requireAuth, requireRole('admin', 'super_admin'), (req, res) => {
-  const ticket = loadTicketOr404(req, res);
+router.patch('/:id', requireAuth, requireRole('admin', 'super_admin'), async (req, res) => {
+  const ticket = await loadTicketOr404(req, res);
   if (!ticket) return;
 
   const validPriorities = ['low', 'medium', 'high', 'urgent'];
@@ -152,45 +167,51 @@ router.patch('/:id', requireAuth, requireRole('admin', 'super_admin'), (req, res
     ? (ticket.resolved_at || now)
     : null;
 
-  db.prepare(`UPDATE tickets SET status = ?, priority = ?, assigned_to = ?, category_id = ?, approver_id = ?, approval_status = ?, approved_at = ?, updated_at = ?, resolved_at = ?
-              WHERE id = ?`)
-    .run(next.status, next.priority, next.assigned_to, next.category_id, next.approver_id, nextApprovalStatus, nextApprovedAt, now, resolvedAt, ticket.id);
+  await pool.query(
+    `UPDATE tickets SET status = $1, priority = $2, assigned_to = $3, category_id = $4, approver_id = $5,
+     approval_status = $6, approved_at = $7, updated_at = $8, resolved_at = $9 WHERE id = $10`,
+    [next.status, next.priority, next.assigned_to, next.category_id, next.approver_id, nextApprovalStatus, nextApprovedAt, now, resolvedAt, ticket.id]
+  );
 
   if (next.status !== ticket.status) {
-    notify(ticket.created_by, `Your ticket "${ticket.subject}" is now ${next.status.replace('_', ' ')}`, ticket.id);
+    await notify(ticket.created_by, `Your ticket "${ticket.subject}" is now ${next.status.replace('_', ' ')}`, ticket.id);
   }
   if (next.assigned_to && next.assigned_to !== ticket.assigned_to) {
-    notify(next.assigned_to, `You were assigned to ticket "${ticket.subject}"`, ticket.id);
+    await notify(next.assigned_to, `You were assigned to ticket "${ticket.subject}"`, ticket.id);
   }
   if (approverChanged && next.approver_id) {
-    notify(next.approver_id, `You were designated as approver for ticket "${ticket.subject}"`, ticket.id);
+    await notify(next.approver_id, `You were designated as approver for ticket "${ticket.subject}"`, ticket.id);
   }
 
   const changes = [];
   if (next.status !== ticket.status) changes.push(`status ${ticket.status} → ${next.status}`);
   if (next.priority !== ticket.priority) changes.push(`priority ${ticket.priority} → ${next.priority}`);
   if (next.assigned_to !== ticket.assigned_to) {
-    const assigneeName = next.assigned_to
-      ? db.prepare('SELECT name FROM users WHERE id = ?').get(next.assigned_to)?.name
-      : 'Unassigned';
+    let assigneeName = 'Unassigned';
+    if (next.assigned_to) {
+      const { rows } = await pool.query('SELECT name FROM users WHERE id = $1', [next.assigned_to]);
+      assigneeName = rows[0]?.name;
+    }
     changes.push(`assigned to ${assigneeName}`);
   }
   if (approverChanged) {
-    const approverName = next.approver_id
-      ? db.prepare('SELECT name FROM users WHERE id = ?').get(next.approver_id)?.name
-      : 'No approver';
+    let approverName = 'No approver';
+    if (next.approver_id) {
+      const { rows } = await pool.query('SELECT name FROM users WHERE id = $1', [next.approver_id]);
+      approverName = rows[0]?.name;
+    }
     changes.push(`approver set to ${approverName}`);
   }
   if (changes.length > 0) {
-    logActivity(req.user, 'update', 'ticket', ticket.id, `Updated ticket "${ticket.subject}" (${changes.join(', ')})`);
+    await logActivity(req.user, 'update', 'ticket', ticket.id, `Updated ticket "${ticket.subject}" (${changes.join(', ')})`);
   }
 
-  const updated = db.prepare(TICKET_SELECT + ' WHERE t.id = ?').get(ticket.id);
-  res.json({ ticket: updated });
+  const { rows: updatedRows } = await pool.query(TICKET_SELECT + ' WHERE t.id = $1', [ticket.id]);
+  res.json({ ticket: updatedRows[0] });
 });
 
-router.patch('/:id/approval', requireAuth, requireRole('admin', 'super_admin'), (req, res) => {
-  const ticket = loadTicketOr404(req, res);
+router.patch('/:id/approval', requireAuth, requireRole('admin', 'super_admin', 'approver'), async (req, res) => {
+  const ticket = await loadTicketOr404(req, res);
   if (!ticket) return;
 
   if (!ticket.approver_id) {
@@ -206,31 +227,31 @@ router.patch('/:id/approval', requireAuth, requireRole('admin', 'super_admin'), 
   }
 
   const now = new Date().toISOString();
-  db.prepare('UPDATE tickets SET approval_status = ?, approved_at = ?, updated_at = ? WHERE id = ?')
-    .run(decision, now, now, ticket.id);
+  await pool.query('UPDATE tickets SET approval_status = $1, approved_at = $2, updated_at = $3 WHERE id = $4',
+    [decision, now, now, ticket.id]);
 
-  notify(ticket.created_by, `Your ticket "${ticket.subject}" was ${decision} by the approver`, ticket.id);
-  logActivity(req.user, 'update', 'ticket', ticket.id, `${decision === 'approved' ? 'Approved' : 'Rejected'} ticket "${ticket.subject}"`);
+  await notify(ticket.created_by, `Your ticket "${ticket.subject}" was ${decision} by the approver`, ticket.id);
+  await logActivity(req.user, 'update', 'ticket', ticket.id, `${decision === 'approved' ? 'Approved' : 'Rejected'} ticket "${ticket.subject}"`);
 
-  const updated = db.prepare(TICKET_SELECT + ' WHERE t.id = ?').get(ticket.id);
-  res.json({ ticket: updated });
+  const { rows: updatedRows } = await pool.query(TICKET_SELECT + ' WHERE t.id = $1', [ticket.id]);
+  res.json({ ticket: updatedRows[0] });
 });
 
-router.get('/:id/comments', requireAuth, (req, res) => {
-  const ticket = loadTicketOr404(req, res);
+router.get('/:id/comments', requireAuth, async (req, res) => {
+  const ticket = await loadTicketOr404(req, res);
   if (!ticket) return;
   if (!canAccessTicket(req.user, ticket)) return res.status(403).json({ error: 'Access denied' });
 
-  const comments = db.prepare(`
+  const { rows } = await pool.query(`
     SELECT cm.*, u.name AS author_name, u.role AS author_role
     FROM comments cm JOIN users u ON u.id = cm.user_id
-    WHERE cm.ticket_id = ? ORDER BY cm.created_at ASC
-  `).all(ticket.id);
-  res.json({ comments });
+    WHERE cm.ticket_id = $1 ORDER BY cm.created_at ASC
+  `, [ticket.id]);
+  res.json({ comments: rows });
 });
 
-router.post('/:id/comments', requireAuth, (req, res) => {
-  const ticket = loadTicketOr404(req, res);
+router.post('/:id/comments', requireAuth, async (req, res) => {
+  const ticket = await loadTicketOr404(req, res);
   if (!ticket) return;
   if (!canAccessTicket(req.user, ticket)) return res.status(403).json({ error: 'Access denied' });
 
@@ -238,24 +259,26 @@ router.post('/:id/comments', requireAuth, (req, res) => {
   if (!message || !message.trim()) return res.status(400).json({ error: 'Comment message is required' });
 
   const now = new Date().toISOString();
-  const info = db.prepare(`INSERT INTO comments (ticket_id, user_id, message, created_at) VALUES (?, ?, ?, ?)`)
-    .run(ticket.id, req.user.id, message.trim(), now);
+  const inserted = await pool.query(
+    'INSERT INTO comments (ticket_id, user_id, message, created_at) VALUES ($1, $2, $3, $4) RETURNING id',
+    [ticket.id, req.user.id, message.trim(), now]
+  );
 
-  db.prepare('UPDATE tickets SET updated_at = ? WHERE id = ?').run(now, ticket.id);
+  await pool.query('UPDATE tickets SET updated_at = $1 WHERE id = $2', [now, ticket.id]);
 
   const recipients = new Set([ticket.created_by, ticket.assigned_to].filter(Boolean));
   recipients.delete(req.user.id);
   for (const uid of recipients) {
-    notify(uid, `New comment on ticket "${ticket.subject}"`, ticket.id);
+    await notify(uid, `New comment on ticket "${ticket.subject}"`, ticket.id);
   }
 
-  logActivity(req.user, 'comment', 'ticket', ticket.id, `Commented on ticket "${ticket.subject}"`);
+  await logActivity(req.user, 'comment', 'ticket', ticket.id, `Commented on ticket "${ticket.subject}"`);
 
-  const comment = db.prepare(`
+  const { rows: commentRows } = await pool.query(`
     SELECT cm.*, u.name AS author_name, u.role AS author_role
-    FROM comments cm JOIN users u ON u.id = cm.user_id WHERE cm.id = ?
-  `).get(info.lastInsertRowid);
-  res.status(201).json({ comment });
+    FROM comments cm JOIN users u ON u.id = cm.user_id WHERE cm.id = $1
+  `, [inserted.rows[0].id]);
+  res.status(201).json({ comment: commentRows[0] });
 });
 
 module.exports = router;

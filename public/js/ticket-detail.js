@@ -65,6 +65,7 @@ async function loadTicket(user) {
   if (isStaff) {
     controls.classList.remove('d-none');
     const { users } = await api.get('/users/assignable');
+    const { users: approvers } = await api.get('/users/approvers');
     document.getElementById('statusSelect').value = ticket.status;
     document.getElementById('prioritySelect').value = ticket.priority;
     const assignSelect = document.getElementById('assigneeSelect');
@@ -72,7 +73,7 @@ async function loadTicket(user) {
       users.map(u => `<option value="${u.id}" ${u.id === ticket.assigned_to ? 'selected' : ''}>${escapeHtml(u.name)}</option>`).join('');
     const approverSelect = document.getElementById('approverSelect');
     approverSelect.innerHTML = '<option value="">No approver</option>' +
-      users.map(u => `<option value="${u.id}" ${u.id === ticket.approver_id ? 'selected' : ''}>${escapeHtml(u.name)}</option>`).join('');
+      approvers.map(u => `<option value="${u.id}" ${u.id === ticket.approver_id ? 'selected' : ''}>${escapeHtml(u.name)}</option>`).join('');
 
     document.getElementById('saveTicketBtn').onclick = async () => {
       await api.patch(`/tickets/${ticketId}`, {
@@ -86,7 +87,8 @@ async function loadTicket(user) {
   }
 
   const approvalCard = document.getElementById('approvalCard');
-  if (isStaff && ticket.approver_id) {
+  const canViewApprovalCard = ticket.approver_id && (isStaff || user.id === ticket.approver_id);
+  if (canViewApprovalCard) {
     approvalCard.classList.remove('d-none');
     const badge = document.getElementById('approvalStatusBadge');
     const badgeColor = { pending: 'warning', approved: 'success', rejected: 'danger' }[ticket.approval_status] || 'secondary';

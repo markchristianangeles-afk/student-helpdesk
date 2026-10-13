@@ -8,7 +8,11 @@ const api = {
     });
     let data = {};
     try { data = await res.json(); } catch (e) { /* no body */ }
-    if (!res.ok) throw new Error(data.error || 'Request failed');
+    if (!res.ok) {
+      const err = new Error(data.error || 'Request failed');
+      err.code = data.code;
+      throw err;
+    }
     return data;
   },
   get(path) { return this.request('GET', path); },

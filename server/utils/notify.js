@@ -1,9 +1,11 @@
-const db = require('../db');
+const { pool } = require('../db');
 
-function notify(userId, message, ticketId = null) {
-  db.prepare(`INSERT INTO notifications (user_id, ticket_id, message, is_read, created_at)
-              VALUES (?, ?, ?, 0, ?)`)
-    .run(userId, ticketId, message, new Date().toISOString());
+async function notify(userId, message, ticketId = null) {
+  await pool.query(
+    `INSERT INTO notifications (user_id, ticket_id, message, is_read, created_at)
+     VALUES ($1, $2, $3, 0, $4)`,
+    [userId, ticketId, message, new Date().toISOString()]
+  );
 }
 
 module.exports = notify;

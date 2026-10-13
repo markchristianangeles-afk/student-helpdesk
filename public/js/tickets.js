@@ -3,8 +3,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!user) return;
   window.currentUser = user;
 
-  const isStaff = user.role === 'admin' || user.role === 'super_admin';
-  document.getElementById('newTicketBtn').classList.toggle('d-none', isStaff);
+  document.getElementById('newTicketBtn').classList.toggle('d-none', user.role !== 'student');
   document.getElementById('ticketSectionField').value = user.section || 'Not set';
 
   const { categories } = await api.get('/categories');
@@ -98,6 +97,6 @@ async function loadTickets() {
   if (q) params.set('q', q);
 
   const { tickets } = await api.get(`/tickets?${params.toString()}`);
-  const isStaff = window.currentUser.role === 'admin' || window.currentUser.role === 'super_admin';
-  document.getElementById('ticketTableContainer').innerHTML = renderTicketTable(tickets, { showAssignee: isStaff });
+  const isPrivileged = window.currentUser.role !== 'student';
+  document.getElementById('ticketTableContainer').innerHTML = renderTicketTable(tickets, { showAssignee: isPrivileged });
 }

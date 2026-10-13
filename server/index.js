@@ -3,6 +3,7 @@ const path = require('path');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
+const { initDb } = require('./db');
 
 const authRoutes = require('./routes/auth');
 const categoryRoutes = require('./routes/categories');
@@ -37,6 +38,14 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Student Helpdesk running on http://0.0.0.0:${PORT}`);
-});
+
+initDb()
+  .then(() => {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Student Helpdesk running on http://0.0.0.0:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('Failed to initialize database:', err);
+    process.exit(1);
+  });

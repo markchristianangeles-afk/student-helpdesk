@@ -185,7 +185,13 @@ router.post('/reset-password', async (req, res) => {
      email_verified = 1, verification_token = NULL, verification_token_expires = NULL WHERE id = $2`,
     [hash, user.id]);
 
-  res.json({ message: 'Password reset. You can now log in with your new password.' });
+  // Login is by username, not email, so the confirmation has to surface it -
+  // otherwise someone who reset a forgotten password still cannot sign in,
+  // especially on an account whose username was auto-derived and never chosen.
+  res.json({
+    message: `Password reset. Your username is "${user.username}" - use it with your new password to log in.`,
+    username: user.username,
+  });
 });
 
 router.post('/logout', (req, res) => {

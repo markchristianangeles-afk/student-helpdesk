@@ -30,10 +30,8 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const result = await api.post('/auth/reset-password', { token, password });
       form.classList.add('d-none');
-      alertBox.classList.remove('d-none', 'alert-danger');
-      alertBox.classList.add('alert-success');
-      alertBox.textContent = result.message;
-      setTimeout(() => { window.location.href = '/index.html'; }, 1500);
+      document.getElementById('successUsername').textContent = result.username;
+      document.getElementById('successBox').classList.remove('d-none');
     } catch (err) {
       alertBox.classList.remove('alert-success');
       alertBox.classList.add('alert-danger');

@@ -25,9 +25,9 @@ async function loadCategories() {
   const { categories } = await api.get('/categories');
   document.getElementById('categoriesTableBody').innerHTML = categories.map(c => `
     <tr data-id="${c.id}">
-      <td><input type="text" class="form-control form-control-sm category-name-input" value="${escapeHtml(c.name)}"></td>
-      <td>${c.ticket_count}</td>
-      <td class="d-flex gap-2">
+      <td data-label="Name"><input type="text" class="form-control form-control-sm category-name-input" value="${escapeHtml(c.name)}"></td>
+      <td data-label="Tickets">${c.ticket_count}</td>
+      <td data-label="Actions" class="action-group">
         <button class="btn btn-sm btn-outline-primary save-category-btn">Save</button>
         <button class="btn btn-sm btn-outline-danger delete-category-btn">Delete</button>
       </td>

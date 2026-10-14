@@ -18,6 +18,16 @@
   --bs-link-color-rgb: 79, 70, 229;
   --bs-link-hover-color: #4338ca;
   --bs-link-hover-color-rgb: 67, 56, 202;
+
+  --app-page-top: 1.75rem;
+  --app-page-bottom: 3rem;
+  --app-gutter: 1rem;
+  --app-topbar-h: 3.5rem;
+  --app-btn-h: 2.5rem;
+  /* 44px: the minimum comfortable touch target on phones */
+  --app-btn-h-touch: 2.75rem;
+  --app-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.05);
+  --app-shadow-md: 0 2px 4px rgba(15, 23, 42, 0.06), 0 12px 24px rgba(15, 23, 42, 0.08);
 }
 
 [data-bs-theme="dark"] {
@@ -46,9 +56,35 @@ body {
   min-height: 100vh;
 }
 
+/* Page rhythm. Super Admin pages have no in-flow navbar above the content, so
+   without this the first element sits flush against the top of the viewport. */
+body:not(.auth-page) > .container {
+  padding-top: var(--app-page-top);
+  padding-bottom: var(--app-page-bottom);
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+body:not(.auth-page) h4 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.page-header h4 {
+  margin: 0;
+}
+
 .card {
   border: none;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.05);
+  border-radius: var(--bs-border-radius-lg);
+  box-shadow: var(--app-shadow-sm);
 }
 
 [data-bs-theme="dark"] .card {
@@ -64,8 +100,58 @@ body {
   letter-spacing: -0.02em;
 }
 
+/* One height for every control, so rows of buttons and inputs line up. */
 .btn {
   font-weight: 500;
+  min-height: var(--app-btn-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding-inline: 1rem;
+}
+
+.btn-sm {
+  min-height: 2.25rem;
+  padding-inline: 0.75rem;
+}
+
+.form-control,
+.form-select {
+  min-height: var(--app-btn-h);
+}
+
+.form-control-sm,
+.form-select-sm {
+  min-height: 2.25rem;
+}
+
+.btn:focus-visible,
+.form-control:focus,
+.form-select:focus {
+  box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.25);
+}
+
+/* Equal-width actions that wrap instead of overflowing their cell. */
+.action-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Natural width on desktop so a four-button cell does not force the table to
+   scroll; equal halves once stacked on a phone. Heights match everywhere. */
+.action-group > .btn {
+  flex: 0 0 auto;
+}
+
+.table > thead th {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bs-secondary-color);
+  white-space: nowrap;
 }
 
 .badge {
@@ -152,10 +238,116 @@ body.has-sidebar {
   display: none;
 }
 
+/* ---------------------------------------------------------------- mobile */
+
+@media (max-width: 767.98px) {
+  .btn,
+  .btn-sm {
+    min-height: var(--app-btn-h-touch);
+  }
+
+  /* 16px is the threshold below which iOS Safari zooms in on focus. */
+  .form-control,
+  .form-select,
+  .form-control-sm,
+  .form-select-sm {
+    min-height: var(--app-btn-h-touch);
+    font-size: 16px;
+  }
+
+  .action-group > .btn {
+    flex: 1 1 calc(50% - 0.25rem);
+    min-width: 0;
+  }
+
+  /* Rows become stacked cards: a 7-column table is unreadable on a phone,
+     and horizontal scrolling hides the actions. Each cell is labelled from
+     its data-label so the heading row is not needed. */
+  .table-stack thead {
+    display: none;
+  }
+
+  .table-stack,
+  .table-stack tbody,
+  .table-stack tr,
+  .table-stack td {
+    display: block;
+    width: 100%;
+  }
+
+  .table-stack tbody tr {
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    padding: 0.35rem 0.9rem 0.9rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .table-stack tbody tr:last-child {
+    margin-bottom: 0;
+  }
+
+  .table-stack tbody td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border: 0;
+    padding: 0.45rem 0;
+    background: transparent;
+  }
+
+  .table-stack tbody td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--bs-secondary-color);
+  }
+
+  .table-stack tbody td:not([data-label])::before {
+    content: none;
+  }
+
+  /* Label on its own line, buttons wrapping two-up underneath it. */
+  .table-stack tbody td[data-label="Actions"] {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 0.5rem;
+    padding-top: 0.7rem;
+  }
+
+  .table-stack tbody td[data-label="Actions"]::before {
+    flex: 1 1 100%;
+  }
+
+  .table-stack tbody td .form-control,
+  .table-stack tbody td .form-select {
+    max-width: 60%;
+  }
+
+  .modal-dialog {
+    margin: 0.5rem;
+  }
+}
+
+@media (max-width: 575.98px) {
+  body:not(.auth-page) > .container {
+    padding-left: max(var(--app-gutter), env(safe-area-inset-left));
+    padding-right: max(var(--app-gutter), env(safe-area-inset-right));
+  }
+
+  .page-header > .btn {
+    width: 100%;
+  }
+}
+
 @media (max-width: 991.98px) {
   body.has-sidebar {
     padding-left: 0;
-    padding-top: 56px;
+    padding-top: var(--app-topbar-h);
   }
 
   .app-sidebar {
@@ -170,6 +362,7 @@ body.has-sidebar {
     display: flex;
     align-items: center;
     width: 100%;
+    min-height: var(--app-topbar-h);
     padding: 0.75rem 1.25rem;
     background: linear-gradient(135deg, #4338ca, #312e81);
     color: #fff;

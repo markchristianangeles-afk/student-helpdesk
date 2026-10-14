@@ -62,10 +62,10 @@ async function loadUsers() {
     const isSelf = u.id === window.currentUser.id;
     return `
     <tr data-row-id="${u.id}">
-      <td><input type="text" class="form-control form-control-sm" data-field="name" value="${escapeHtml(u.name)}" disabled></td>
-      <td><input type="email" class="form-control form-control-sm" data-field="email" value="${escapeHtml(u.email)}" disabled></td>
-      <td><input type="text" class="form-control form-control-sm" data-field="section" value="${u.section ? escapeHtml(u.section) : ''}" placeholder="e.g., BSIT-3A" disabled></td>
-      <td>
+      <td data-label="Name"><input type="text" class="form-control form-control-sm" data-field="name" value="${escapeHtml(u.name)}" disabled></td>
+      <td data-label="Email"><input type="email" class="form-control form-control-sm" data-field="email" value="${escapeHtml(u.email)}" disabled></td>
+      <td data-label="Section"><input type="text" class="form-control form-control-sm" data-field="section" value="${u.section ? escapeHtml(u.section) : ''}" placeholder="e.g., BSIT-3A" disabled></td>
+      <td data-label="Role">
         <select class="form-select form-select-sm" data-id="${u.id}" data-field="role" disabled>
           <option value="student" ${u.role === 'student' ? 'selected' : ''}>Student</option>
           <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
@@ -73,14 +73,14 @@ async function loadUsers() {
           <option value="super_admin" ${u.role === 'super_admin' ? 'selected' : ''}>Super Admin</option>
         </select>
       </td>
-      <td>
+      <td data-label="Active">
         <div class="form-check form-switch">
           <input class="form-check-input" type="checkbox" data-id="${u.id}" data-field="is_active"
                  ${u.is_active ? 'checked' : ''} disabled>
         </div>
       </td>
-      <td>${new Date(u.created_at).toLocaleDateString()}</td>
-      <td class="d-flex gap-2">
+      <td data-label="Joined">${new Date(u.created_at).toLocaleDateString()}</td>
+      <td data-label="Actions" class="action-group">
         <button class="btn btn-sm btn-outline-secondary" data-modify-id="${u.id}" ${isSelf ? 'disabled' : ''}>
           Modify
         </button>

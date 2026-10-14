@@ -12,7 +12,7 @@
 <body>
 <div id="app-navbar"></div>
 <div class="container pb-5">
-  <div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="page-header">
     <h4 class="mb-0">User Management</h4>
     <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
       <i class="bi bi-person-plus"></i> Add User
@@ -20,7 +20,7 @@
   </div>
   <div class="card">
     <div class="table-responsive">
-      <table class="table table-hover align-middle mb-0">
+      <table class="table table-hover table-stack align-middle mb-0">
         <thead><tr><th>Name</th><th>Email</th><th>Section</th><th>Role</th><th>Active</th><th>Joined</th><th>Actions</th></tr></thead>
         <tbody id="usersTableBody"></tbody>
       </table>

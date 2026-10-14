@@ -77,7 +77,7 @@ const Helpdesk = {
         </div>
       </div>
     ` : `
-      <nav class="navbar navbar-expand-lg navbar-dark app-navbar mb-4">
+      <nav class="navbar navbar-expand-lg navbar-dark app-navbar">
         <div class="container">
           <a class="navbar-brand" href="/dashboard.html">Student Helpdesk</a>
           <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navLinks">

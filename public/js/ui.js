@@ -17,7 +17,7 @@ function renderTicketTable(tickets, opts = {}) {
   return `
     <div class="card">
       <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0">
+        <table class="table table-hover table-stack align-middle mb-0">
           <thead>
             <tr>
               <th>Subject</th>
@@ -32,13 +32,13 @@ function renderTicketTable(tickets, opts = {}) {
           <tbody>
             ${tickets.map(t => `
               <tr style="cursor:pointer" onclick="window.location.href='/ticket.html?id=${t.id}'">
-                <td>${escapeHtml(t.subject)}</td>
-                ${showAssignee ? `<td>${t.creator_section ? escapeHtml(t.creator_section) : '<span class="text-muted">—</span>'}</td>` : ''}
-                <td><span class="badge rounded-pill badge-priority-${t.priority}">${t.priority}</span></td>
-                <td><span class="badge rounded-pill badge-status-${t.status}">${t.status.replace('_', ' ')}</span></td>
-                ${showAssignee ? `<td>${t.assignee_name ? escapeHtml(t.assignee_name) : '<span class="text-muted">Unassigned</span>'}</td>` : ''}
-                ${showAssignee ? `<td>${renderApproverCell(t)}</td>` : ''}
-                <td>${new Date(t.created_at).toLocaleDateString()}</td>
+                <td data-label="Subject">${escapeHtml(t.subject)}</td>
+                ${showAssignee ? `<td data-label="Section">${t.creator_section ? escapeHtml(t.creator_section) : '<span class="text-muted">—</span>'}</td>` : ''}
+                <td data-label="Priority"><span class="badge rounded-pill badge-priority-${t.priority}">${t.priority}</span></td>
+                <td data-label="Status"><span class="badge rounded-pill badge-status-${t.status}">${t.status.replace('_', ' ')}</span></td>
+                ${showAssignee ? `<td data-label="Assigned To">${t.assignee_name ? escapeHtml(t.assignee_name) : '<span class="text-muted">Unassigned</span>'}</td>` : ''}
+                ${showAssignee ? `<td data-label="Approver">${renderApproverCell(t)}</td>` : ''}
+                <td data-label="Created">${new Date(t.created_at).toLocaleDateString()}</td>
               </tr>
             `).join('')}
           </tbody>

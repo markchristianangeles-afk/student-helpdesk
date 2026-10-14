@@ -35,10 +35,10 @@ async function loadActivity() {
     ? '<tr><td colspan="4" class="text-muted text-center py-4">No activity recorded yet.</td></tr>'
     : entries.map(e => `
         <tr>
-          <td class="text-nowrap">${new Date(e.created_at).toLocaleString()}</td>
-          <td>${escapeHtml(e.actor_name)} <span class="badge bg-secondary">${Helpdesk.roleLabel(e.actor_role)}</span></td>
-          <td><span class="badge bg-${ACTION_BADGE[e.action] || 'secondary'}">${e.action}</span> <span class="text-muted small">${e.entity_type}</span></td>
-          <td>${escapeHtml(e.message)}</td>
+          <td data-label="When" class="text-nowrap">${new Date(e.created_at).toLocaleString()}</td>
+          <td data-label="Who">${escapeHtml(e.actor_name)} <span class="badge bg-secondary">${Helpdesk.roleLabel(e.actor_role)}</span></td>
+          <td data-label="Action"><span class="badge bg-${ACTION_BADGE[e.action] || 'secondary'}">${e.action}</span> <span class="text-muted small">${e.entity_type}</span></td>
+          <td data-label="Details">${escapeHtml(e.message)}</td>
         </tr>
       `).join('');
 }

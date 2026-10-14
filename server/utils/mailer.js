@@ -60,4 +60,24 @@ async function sendVerificationEmail(toEmail, name, verifyUrl) {
   });
 }
 
-module.exports = { sendVerificationEmail };
+async function sendPasswordResetEmail(toEmail, name, resetUrl) {
+  const t = getTransporter();
+  if (!t) {
+    console.log(`[mailer] No SMTP_HOST (or GMAIL_USER/GMAIL_APP_PASSWORD) configured. Password reset link for ${toEmail}: ${resetUrl}`);
+    return;
+  }
+
+  await t.sendMail({
+    from: `"Student Helpdesk" <${fromAddress}>`,
+    to: toEmail,
+    subject: 'Reset your Student Helpdesk password',
+    html: `
+      <p>Hi ${name},</p>
+      <p>We received a request to reset your Student Helpdesk password. Click the link below to choose a new one:</p>
+      <p><a href="${resetUrl}">${resetUrl}</a></p>
+      <p>This link expires in 1 hour. If you didn't request this, you can ignore this email.</p>
+    `,
+  });
+}
+
+module.exports = { sendVerificationEmail, sendPasswordResetEmail };

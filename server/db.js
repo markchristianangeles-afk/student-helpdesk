@@ -98,6 +98,8 @@ async function initDb() {
   await ensureColumn('users', 'email_verified', 'INTEGER NOT NULL DEFAULT 1');
   await ensureColumn('users', 'verification_token', 'TEXT');
   await ensureColumn('users', 'verification_token_expires', 'TEXT');
+  await ensureColumn('users', 'reset_token', 'TEXT');
+  await ensureColumn('users', 'reset_token_expires', 'TEXT');
   await pool.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
   await pool.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('super_admin','admin','approver','student'))`);
   await ensureColumn('tickets', 'approver_id', 'INTEGER');

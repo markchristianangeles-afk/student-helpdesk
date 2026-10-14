@@ -6,11 +6,12 @@ const { pool } = require('../db');
 const { requireAuth, JWT_SECRET } = require('../middleware/auth');
 const { validateEmailOrThrow } = require('../utils/validateEmail');
 const logActivity = require('../utils/logActivity');
-const { sendVerificationEmail } = require('../utils/mailer');
+const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/mailer');
 
 const router = express.Router();
 
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 
 function appUrl() {
   return process.env.APP_URL || 'http://localhost:3000';
@@ -121,6 +122,44 @@ router.post('/resend-verification', async (req, res) => {
   }
 
   res.json({ message: 'If that email has a pending verification, a new link has been sent.' });
+});
+
+router.post('/forgot-password', async (req, res) => {
+  const { email } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+
+  const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
+  const user = rows[0];
+
+  if (user && user.is_active) {
+    const token = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + RESET_TOKEN_TTL_MS).toISOString();
+    await pool.query('UPDATE users SET reset_token = $1, reset_token_expires = $2 WHERE id = $3',
+      [token, expires, user.id]);
+    const resetUrl = `${appUrl()}/reset-password.html?token=${token}`;
+    await sendPasswordResetEmail(user.email, user.name, resetUrl);
+  }
+
+  res.json({ message: 'If that email has an account, a password reset link has been sent.' });
+});
+
+router.post('/reset-password', async (req, res) => {
+  const { token, password } = req.body || {};
+  if (!token || !password) return res.status(400).json({ error: 'Token and new password are required' });
+  if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+
+  const { rows } = await pool.query('SELECT * FROM users WHERE reset_token = $1', [token]);
+  const user = rows[0];
+
+  if (!user || !user.reset_token_expires || new Date(user.reset_token_expires) < new Date()) {
+    return res.status(400).json({ error: 'This reset link is invalid or has expired. Please request a new one.' });
+  }
+
+  const hash = bcrypt.hashSync(password, 10);
+  await pool.query('UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expires = NULL WHERE id = $2',
+    [hash, user.id]);
+
+  res.json({ message: 'Password reset. You can now log in with your new password.' });
 });
 
 router.post('/logout', (req, res) => {

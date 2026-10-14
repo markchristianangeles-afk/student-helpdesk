@@ -4,16 +4,17 @@ const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { validateEmailOrThrow } = require('../utils/validateEmail');
 const { trimmedString } = require('../utils/input');
+const { normalizeUsername, usernameError } = require('../utils/username');
 const logActivity = require('../utils/logActivity');
 
 const router = asyncRouter();
 
 router.get('/', requireAuth, requireRole('super_admin'), async (req, res) => {
   const { role, q } = req.query;
-  let sql = 'SELECT id, name, email, role, is_active, section, created_at FROM users WHERE 1=1';
+  let sql = 'SELECT id, name, email, username, role, is_active, section, created_at FROM users WHERE 1=1';
   const params = [];
   if (role) { params.push(role); sql += ` AND role = $${params.length}`; }
-  if (q) { params.push(`%${q}%`); sql += ` AND (name ILIKE $${params.length} OR email ILIKE $${params.length})`; }
+  if (q) { params.push(`%${q}%`); sql += ` AND (name ILIKE $${params.length} OR email ILIKE $${params.length} OR username ILIKE $${params.length})`; }
   sql += ' ORDER BY created_at DESC';
   const { rows } = await pool.query(sql, params);
   res.json({ users: rows });
@@ -38,11 +39,14 @@ router.post('/', requireAuth, requireRole('super_admin'), async (req, res) => {
   const name = trimmedString(body.name);
   const email = trimmedString(body.email);
   const role = trimmedString(body.role);
+  const username = normalizeUsername(body.username);
   const password = typeof body.password === 'string' ? body.password : null;
 
-  if (!name || !email || !password || !role) {
-    return res.status(400).json({ error: 'Name, email, password and role are required' });
+  if (!name || !email || !password || !role || !username) {
+    return res.status(400).json({ error: 'Name, username, email, password and role are required' });
   }
+  const badUsername = usernameError(username);
+  if (badUsername) return res.status(400).json({ error: badUsername });
   if (!['super_admin', 'admin', 'approver', 'student'].includes(role)) {
     return res.status(400).json({ error: 'Invalid role' });
   }
@@ -56,15 +60,18 @@ router.post('/', requireAuth, requireRole('super_admin'), async (req, res) => {
     return res.status(err.status || 400).json({ error: err.message });
   }
 
+  const takenUsername = await pool.query('SELECT id FROM users WHERE LOWER(username) = $1', [username]);
+  if (takenUsername.rows.length > 0) return res.status(409).json({ error: 'That username is already taken' });
+
   const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
   if (existing.rows.length > 0) return res.status(409).json({ error: 'An account with this email already exists' });
 
   const hash = bcrypt.hashSync(password, 10);
   const inserted = await pool.query(
-    `INSERT INTO users (name, email, password_hash, role, is_active, created_at)
-     VALUES ($1, $2, $3, $4, 1, $5)
-     RETURNING id, name, email, role, is_active, section, created_at`,
-    [name, email.toLowerCase(), hash, role, new Date().toISOString()]
+    `INSERT INTO users (name, email, username, password_hash, role, is_active, created_at)
+     VALUES ($1, $2, $3, $4, $5, 1, $6)
+     RETURNING id, name, email, username, role, is_active, section, created_at`,
+    [name, email.toLowerCase(), username, hash, role, new Date().toISOString()]
   );
 
   const user = inserted.rows[0];
@@ -107,6 +114,18 @@ router.patch('/:id', requireAuth, requireRole('super_admin'), async (req, res) =
     nextName = name;
   }
 
+  let nextUsername = target.username;
+  if (body.username !== undefined) {
+    const username = normalizeUsername(body.username);
+    const badUsername = usernameError(username);
+    if (badUsername) return res.status(400).json({ error: badUsername });
+    if (username !== String(target.username || '').toLowerCase()) {
+      const taken = await pool.query('SELECT id FROM users WHERE LOWER(username) = $1 AND id != $2', [username, id]);
+      if (taken.rows.length > 0) return res.status(409).json({ error: 'That username is already taken' });
+    }
+    nextUsername = username;
+  }
+
   let nextEmail = target.email;
   if (body.email !== undefined) {
     const email = trimmedString(body.email);
@@ -139,6 +158,7 @@ router.patch('/:id', requireAuth, requireRole('super_admin'), async (req, res) =
   const next = {
     name: nextName,
     email: nextEmail,
+    username: nextUsername,
     role: nextRole,
     is_active: is_active !== undefined ? (is_active ? 1 : 0) : target.is_active,
     section: body.section !== undefined ? (trimmedString(body.section) || null) : target.section,
@@ -153,8 +173,8 @@ router.patch('/:id', requireAuth, requireRole('super_admin'), async (req, res) =
     return res.status(400).json({ error: 'Section is required for students' });
   }
 
-  await pool.query('UPDATE users SET name = $1, email = $2, role = $3, is_active = $4, section = $5 WHERE id = $6',
-    [next.name, next.email, next.role, next.is_active, next.section, id]);
+  await pool.query('UPDATE users SET name = $1, email = $2, username = $3, role = $4, is_active = $5, section = $6 WHERE id = $7',
+    [next.name, next.email, next.username, next.role, next.is_active, next.section, id]);
 
   let passwordReset = false;
   if (passwordProvided) {
@@ -166,6 +186,7 @@ router.patch('/:id', requireAuth, requireRole('super_admin'), async (req, res) =
   const changes = [];
   if (next.name !== target.name) changes.push(`name changed to "${next.name}"`);
   if (next.email !== target.email) changes.push(`email changed to ${next.email}`);
+  if (next.username !== target.username) changes.push(`username changed to "${next.username}"`);
   if (next.role !== target.role) changes.push(`role ${target.role} → ${next.role}`);
   if (Number(next.is_active) !== Number(target.is_active)) changes.push(Number(next.is_active) ? 'activated' : 'deactivated');
   if (next.section !== target.section) changes.push(`section changed to "${next.section || 'none'}"`);
@@ -174,7 +195,7 @@ router.patch('/:id', requireAuth, requireRole('super_admin'), async (req, res) =
     await logActivity(req.user, 'update', 'user', id, `Updated ${target.email} (${changes.join(', ')})`);
   }
 
-  const { rows: userRows } = await pool.query('SELECT id, name, email, role, is_active, section, created_at FROM users WHERE id = $1', [id]);
+  const { rows: userRows } = await pool.query('SELECT id, name, email, username, role, is_active, section, created_at FROM users WHERE id = $1', [id]);
   res.json({ user: userRows[0] });
 });
 

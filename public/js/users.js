@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       await api.post('/users', {
         name: document.getElementById('newUserName').value.trim(),
+        username: document.getElementById('newUserUsername').value.trim(),
         email: document.getElementById('newUserEmail').value.trim(),
         password: document.getElementById('newUserPassword').value,
         role: document.getElementById('newUserRole').value,
@@ -63,6 +64,7 @@ async function loadUsers() {
     return `
     <tr data-row-id="${u.id}">
       <td data-label="Name"><input type="text" class="form-control form-control-sm" data-field="name" value="${escapeHtml(u.name)}" disabled></td>
+      <td data-label="Username"><input type="text" class="form-control form-control-sm" data-field="username" value="${escapeHtml(u.username || '')}" disabled></td>
       <td data-label="Email"><input type="email" class="form-control form-control-sm" data-field="email" value="${escapeHtml(u.email)}" disabled></td>
       <td data-label="Section"><input type="text" class="form-control form-control-sm" data-field="section" value="${u.section ? escapeHtml(u.section) : ''}" placeholder="e.g., BSIT-3A" disabled></td>
       <td data-label="Role">
@@ -104,6 +106,7 @@ async function loadUsers() {
     btn.addEventListener('click', () => {
       const row = btn.closest('tr');
       row.querySelector('[data-field="name"]').disabled = false;
+      row.querySelector('[data-field="username"]').disabled = false;
       row.querySelector('[data-field="email"]').disabled = false;
       row.querySelector('[data-field="section"]').disabled = false;
       row.querySelector('[data-field="role"]').disabled = false;
@@ -118,6 +121,7 @@ async function loadUsers() {
       const id = btn.dataset.saveId;
       const row = btn.closest('tr');
       const name = row.querySelector('[data-field="name"]').value.trim();
+      const username = row.querySelector('[data-field="username"]').value.trim();
       const email = row.querySelector('[data-field="email"]').value.trim();
       const section = row.querySelector('[data-field="section"]').value.trim();
       const role = row.querySelector('[data-field="role"]').value;
@@ -127,7 +131,7 @@ async function loadUsers() {
       btn.disabled = true;
       btn.textContent = 'Saving...';
       try {
-        await api.patch(`/users/${id}`, { name, email, section, role, is_active });
+        await api.patch(`/users/${id}`, { name, username, email, section, role, is_active });
         btn.classList.remove('btn-outline-primary', 'btn-danger');
         btn.classList.add('btn-success');
         btn.textContent = 'Saved';

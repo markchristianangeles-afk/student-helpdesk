@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     e.preventDefault();
     alertBox.classList.add('d-none');
     const name = document.getElementById('name').value.trim();
+    const username = document.getElementById('username').value.trim();
     const section = document.getElementById('section').value.trim();
     const email = document.getElementById('email').value.trim();
     const password = document.getElementById('password').value;
@@ -26,11 +27,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     try {
-      const result = await api.post('/auth/register', { name, section, email, password });
+      const result = await api.post('/auth/register', { name, username, section, email, password });
       form.classList.add('d-none');
       alertBox.classList.remove('d-none', 'alert-danger');
       alertBox.classList.add('alert-success');
-      alertBox.textContent = result.message || 'Account created. Please check your email to verify your account before logging in.';
+      alertBox.textContent = result.message || 'Account created. You can now sign in with your username.';
     } catch (err) {
       alertBox.classList.remove('alert-success');
       alertBox.classList.add('alert-danger');

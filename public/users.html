@@ -21,7 +21,7 @@
   <div class="card">
     <div class="table-responsive">
       <table class="table table-hover table-stack align-middle mb-0">
-        <thead><tr><th>Name</th><th>Email</th><th>Section</th><th>Role</th><th>Active</th><th>Joined</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Section</th><th>Role</th><th>Active</th><th>Joined</th><th>Actions</th></tr></thead>
         <tbody id="usersTableBody"></tbody>
       </table>
     </div>
@@ -41,6 +41,11 @@
           <div class="mb-3">
             <label class="form-label">Name</label>
             <input type="text" id="newUserName" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Username</label>
+            <input type="text" id="newUserUsername" class="form-control" autocomplete="username"
+                   pattern="[a-zA-Z0-9._-]{3,30}" title="3-30 characters: letters, numbers, dots, underscores or hyphens" required>
           </div>
           <div class="mb-3">
             <label class="form-label">Email</label>

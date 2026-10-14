@@ -6,6 +6,7 @@ const { pool } = require('../db');
 const { requireAuth, JWT_SECRET } = require('../middleware/auth');
 const { validateEmailOrThrow } = require('../utils/validateEmail');
 const { trimmedString } = require('../utils/input');
+const { normalizeUsername, usernameError } = require('../utils/username');
 const logActivity = require('../utils/logActivity');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/mailer');
 
@@ -45,11 +46,14 @@ router.post('/register', async (req, res) => {
   const name = trimmedString(body.name);
   const email = trimmedString(body.email);
   const section = trimmedString(body.section);
+  const username = normalizeUsername(body.username);
   const password = typeof body.password === 'string' ? body.password : null;
 
-  if (!name || !email || !password || !section) {
-    return res.status(400).json({ error: 'Name, email, password and section are required' });
+  if (!name || !email || !password || !section || !username) {
+    return res.status(400).json({ error: 'Name, username, email, password and section are required' });
   }
+  const badUsername = usernameError(username);
+  if (badUsername) return res.status(400).json({ error: badUsername });
   if (password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters' });
   }
@@ -60,42 +64,46 @@ router.post('/register', async (req, res) => {
     return res.status(err.status || 400).json({ error: err.message });
   }
 
+  const takenUsername = await pool.query('SELECT id FROM users WHERE LOWER(username) = $1', [username]);
+  if (takenUsername.rows.length > 0) return res.status(409).json({ error: 'That username is already taken' });
+
   const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
   if (existing.rows.length > 0) return res.status(409).json({ error: 'An account with this email already exists' });
 
   const hash = bcrypt.hashSync(password, 10);
   const inserted = await pool.query(
-    `INSERT INTO users (name, email, password_hash, role, is_active, section, email_verified, created_at)
-     VALUES ($1, $2, $3, 'student', 1, $4, 0, $5)
-     RETURNING id, name, email, role, section`,
-    [name, email.toLowerCase(), hash, section, new Date().toISOString()]
+    `INSERT INTO users (name, email, username, password_hash, role, is_active, section, email_verified, created_at)
+     VALUES ($1, $2, $3, $4, 'student', 1, $5, 0, $6)
+     RETURNING id, name, email, username, role, section`,
+    [name, email.toLowerCase(), username, hash, section, new Date().toISOString()]
   );
 
   const user = inserted.rows[0];
   await issueAndSendVerification(user);
 
   res.status(201).json({
-    message: 'Account created. Please check your email to verify your account before logging in.',
+    message: 'Account created. You can now sign in with your username.',
   });
 });
 
 router.post('/login', async (req, res) => {
-  const email = trimmedString((req.body || {}).email);
+  const username = normalizeUsername((req.body || {}).username);
   const password = typeof (req.body || {}).password === 'string' ? req.body.password : null;
-  if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+  if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
 
-  const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
+  const { rows } = await pool.query('SELECT * FROM users WHERE LOWER(username) = $1', [username]);
   const user = rows[0];
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
-    return res.status(401).json({ error: 'Invalid email or password' });
+    return res.status(401).json({ error: 'Invalid username or password' });
   }
   if (!user.is_active) return res.status(403).json({ error: 'This account has been deactivated' });
-  if (!user.email_verified) {
-    return res.status(403).json({ error: 'Please verify your email before logging in. Check your inbox, or request a new link.', code: 'EMAIL_NOT_VERIFIED' });
-  }
+
+  // email_verified is still recorded, but deliberately does not gate sign-in:
+  // the login identity is the username, and blocking on an email that may
+  // never arrive would leave accounts permanently unusable.
 
   issueToken(res, user);
-  res.json({ user: { id: user.id, name: user.name, email: user.email, role: user.role, section: user.section } });
+  res.json({ user: { id: user.id, name: user.name, email: user.email, username: user.username, role: user.role, section: user.section } });
 });
 
 router.get('/verify-email', async (req, res) => {
@@ -265,7 +273,7 @@ router.patch('/me', requireAuth, async (req, res) => {
     await logActivity(req.user, 'update', 'user', user.id, `Updated their own profile (${changes.join(', ')})`);
   }
 
-  const updated = await pool.query('SELECT id, name, email, role, is_active, section FROM users WHERE id = $1', [user.id]);
+  const updated = await pool.query('SELECT id, name, email, username, role, is_active, section FROM users WHERE id = $1', [user.id]);
   res.json({ user: updated.rows[0] });
 });
 

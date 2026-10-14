@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
+const { deriveUsername } = require('./utils/username');
 
 const connectionString = process.env.DATABASE_URL
   || 'postgres://postgres:PostgresLocal123!@localhost:5432/helpdesk';
@@ -27,6 +28,7 @@ async function initDb() {
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
+      username TEXT,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL CHECK (role IN ('super_admin','admin','approver','student')),
       is_active INTEGER NOT NULL DEFAULT 1,
@@ -100,6 +102,20 @@ async function initDb() {
   await ensureColumn('users', 'verification_token_expires', 'TEXT');
   await ensureColumn('users', 'reset_token', 'TEXT');
   await ensureColumn('users', 'reset_token_expires', 'TEXT');
+  await ensureColumn('users', 'username', 'TEXT');
+
+  // Accounts created before usernames existed get one derived from their email
+  // address, so the unique index below can be applied without a manual step.
+  const { rows: withoutUsername } = await pool.query(
+    "SELECT id, email FROM users WHERE username IS NULL OR username = ''"
+  );
+  for (const row of withoutUsername) {
+    const derived = await deriveUsername(pool, row.email, row.id);
+    await pool.query('UPDATE users SET username = $1 WHERE id = $2', [derived, row.id]);
+    console.log(`[migrate] Assigned username "${derived}" to ${row.email}`);
+  }
+
+  await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx ON users (LOWER(username))');
   await pool.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
   await pool.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('super_admin','admin','approver','student'))`);
   await ensureColumn('tickets', 'approver_id', 'INTEGER');
@@ -116,13 +132,15 @@ async function initDb() {
     const name = process.env.SUPER_ADMIN_NAME || 'Super Admin';
     const email = (process.env.SUPER_ADMIN_EMAIL || 'admin@example.com').toLowerCase();
     const password = process.env.SUPER_ADMIN_PASSWORD || 'ChangeMe123!';
+    const username = (process.env.SUPER_ADMIN_USERNAME || '').trim().toLowerCase()
+      || await deriveUsername(pool, email);
     const hash = bcrypt.hashSync(password, 10);
     await pool.query(
-      `INSERT INTO users (name, email, password_hash, role, is_active, created_at)
-       VALUES ($1, $2, $3, 'super_admin', 1, $4)`,
-      [name, email, hash, new Date().toISOString()]
+      `INSERT INTO users (name, email, username, password_hash, role, is_active, created_at)
+       VALUES ($1, $2, $3, $4, 'super_admin', 1, $5)`,
+      [name, email, username, hash, new Date().toISOString()]
     );
-    console.log(`[seed] Created default Super Admin account: ${email} / ${password} (change this password immediately)`);
+    console.log(`[seed] Created default Super Admin account: username "${username}" / ${password} (change this password immediately)`);
   }
 }
 

@@ -25,6 +25,12 @@
                 <input type="text" id="name" class="form-control" required>
               </div>
               <div class="mb-3">
+                <label class="form-label">Username</label>
+                <input type="text" id="username" class="form-control" autocomplete="username"
+                       pattern="[a-zA-Z0-9._-]{3,30}" title="3-30 characters: letters, numbers, dots, underscores or hyphens" required>
+                <div class="form-text">This is what you'll sign in with.</div>
+              </div>
+              <div class="mb-3">
                 <label class="form-label">Section</label>
                 <input type="text" id="section" class="form-control" placeholder="e.g., BSIT-3A" required>
               </div>

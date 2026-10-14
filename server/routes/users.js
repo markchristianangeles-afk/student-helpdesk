@@ -144,7 +144,12 @@ router.patch('/:id', requireAuth, requireRole('super_admin'), async (req, res) =
     section: body.section !== undefined ? (trimmedString(body.section) || null) : target.section,
   };
 
-  if (next.role === 'student' && !next.section) {
+  // Only enforced when the request actually touches role or section. Accounts
+  // created from the Add User form have no section, so demanding one on every
+  // update would make them impossible to edit at all - a password reset
+  // included.
+  if ((body.role !== undefined || body.section !== undefined)
+      && next.role === 'student' && !next.section) {
     return res.status(400).json({ error: 'Section is required for students' });
   }
 

@@ -24,6 +24,36 @@ document.addEventListener('DOMContentLoaded', async () => {
       errBox.classList.remove('d-none');
     }
   });
+
+  // Bound once here rather than in loadUsers, which re-runs after every save.
+  document.getElementById('changePasswordForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const errBox = document.getElementById('changePasswordError');
+    errBox.classList.add('d-none');
+
+    const password = document.getElementById('changePasswordNew').value;
+    if (password !== document.getElementById('changePasswordConfirm').value) {
+      errBox.textContent = 'Passwords do not match';
+      errBox.classList.remove('d-none');
+      return;
+    }
+
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Changing...';
+    try {
+      await api.patch(`/users/${form.dataset.userId}`, { password });
+      bootstrap.Modal.getInstance(document.getElementById('changePasswordModal')).hide();
+      form.reset();
+    } catch (err) {
+      errBox.textContent = err.message;
+      errBox.classList.remove('d-none');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Change Password';
+    }
+  });
 });
 
 async function loadUsers() {
@@ -56,6 +86,11 @@ async function loadUsers() {
         </button>
         <button class="btn btn-sm btn-outline-primary" data-save-id="${u.id}" disabled>
           Save
+        </button>
+        <button class="btn btn-sm btn-outline-warning" data-password-id="${u.id}" data-email="${escapeHtml(u.email)}"
+                ${isSelf ? 'disabled' : ''}
+                title="${isSelf ? 'Change your own password from your Profile page' : 'Change this user\'s password'}">
+          Password
         </button>
         <button class="btn btn-sm btn-outline-danger" data-delete-id="${u.id}" data-email="${escapeHtml(u.email)}" ${isSelf ? 'disabled' : ''}>
           Delete
@@ -102,6 +137,17 @@ async function loadUsers() {
         btn.disabled = false;
         btn.textContent = originalLabel;
       }
+    });
+  });
+
+  document.querySelectorAll('[data-password-id]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const form = document.getElementById('changePasswordForm');
+      form.reset();
+      form.dataset.userId = btn.dataset.passwordId;
+      document.getElementById('changePasswordTarget').textContent = btn.dataset.email;
+      document.getElementById('changePasswordError').classList.add('d-none');
+      new bootstrap.Modal(document.getElementById('changePasswordModal')).show();
     });
   });
 

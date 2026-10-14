@@ -21,8 +21,14 @@ const api = {
   delete(path) { return this.request('DELETE', path); },
 };
 
+// Escapes quotes as well as angle brackets: the result is interpolated into
+// double-quoted attributes in several places, and a text node serialised via
+// innerHTML leaves " intact, which allows breaking out of the attribute.
 function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str == null ? '' : str;
-  return div.innerHTML;
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }

@@ -53,9 +53,3 @@ function renderApproverCell(t) {
   const badgeColor = { pending: 'warning', approved: 'success', rejected: 'danger' }[t.approval_status] || 'secondary';
   return `${escapeHtml(t.approver_name)} <span class="badge bg-${badgeColor}">${t.approval_status}</span>`;
 }
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}

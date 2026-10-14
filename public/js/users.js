@@ -41,7 +41,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const submitBtn = form.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Changing...';
+    submitBtn.textContent = 'Resetting...';
     try {
       await api.patch(`/users/${form.dataset.userId}`, { password });
       bootstrap.Modal.getInstance(document.getElementById('changePasswordModal')).hide();
@@ -51,7 +51,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       errBox.classList.remove('d-none');
     } finally {
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Change Password';
+      submitBtn.textContent = 'Reset Password';
     }
   });
 });
@@ -89,8 +89,8 @@ async function loadUsers() {
         </button>
         <button class="btn btn-sm btn-outline-warning" data-password-id="${u.id}" data-email="${escapeHtml(u.email)}"
                 ${isSelf ? 'disabled' : ''}
-                title="${isSelf ? 'Change your own password from your Profile page' : 'Change this user\'s password'}">
-          Password
+                title="${isSelf ? 'Change your own password from your Profile page' : 'Reset this user\'s password'}">
+          Reset Password
         </button>
         <button class="btn btn-sm btn-outline-danger" data-delete-id="${u.id}" data-email="${escapeHtml(u.email)}" ${isSelf ? 'disabled' : ''}>
           Delete

@@ -4,6 +4,7 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const { initDb } = require('./db');
+const { verifyTransport } = require('./utils/mailer');
 
 const authRoutes = require('./routes/auth');
 const categoryRoutes = require('./routes/categories');
@@ -50,6 +51,7 @@ initDb()
   .then(() => {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Student Helpdesk running on http://0.0.0.0:${PORT}`);
+      verifyTransport();
     });
   })
   .catch((err) => {

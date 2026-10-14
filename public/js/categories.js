@@ -24,9 +24,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function loadCategories() {
   const { categories } = await api.get('/categories');
   document.getElementById('categoriesTableBody').innerHTML = categories.map(c => `
-    <tr data-id="${c.id}">
+    <tr data-id="${c.id}" data-ticket-count="${c.ticket_count}">
       <td data-label="Name"><input type="text" class="form-control form-control-sm category-name-input" value="${escapeHtml(c.name)}"></td>
-      <td data-label="Tickets">${c.ticket_count}</td>
       <td data-label="Actions" class="action-group">
         <button class="btn btn-sm btn-outline-primary save-category-btn">Save</button>
         <button class="btn btn-sm btn-outline-danger delete-category-btn">Delete</button>
@@ -61,7 +60,7 @@ async function loadCategories() {
       const row = btn.closest('tr');
       const id = row.dataset.id;
       const name = row.querySelector('.category-name-input').value;
-      const count = Number(row.children[1].textContent);
+      const count = Number(row.dataset.ticketCount);
       const confirmMsg = count > 0
         ? `"${name}" has ${count} ticket(s) using it. Deleting it will mark those tickets as Uncategorized. Continue?`
         : `Delete category "${name}"?`;

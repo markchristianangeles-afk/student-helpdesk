@@ -107,4 +107,27 @@ async function sendPasswordResetEmail(toEmail, name, resetUrl) {
   });
 }
 
-module.exports = { sendVerificationEmail, sendPasswordResetEmail };
+// Called once at startup so a broken mail setup is obvious in the logs rather
+// than only surfacing when someone tries to register or reset a password.
+// Never logs the password.
+async function verifyTransport() {
+  const t = getTransporter();
+  if (!t) {
+    console.log('[mailer] No SMTP configured. Verification and reset links will be printed to this log instead of emailed.');
+    console.log('[mailer] To send real email set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and EMAIL_FROM.');
+    return;
+  }
+
+  const opts = t.options || {};
+  console.log(`[mailer] Config: host=${opts.host || opts.service || '?'} port=${opts.port || '?'} secure=${opts.secure} user=${opts.auth && opts.auth.user ? 'set' : 'MISSING'} from=${fromAddress || 'MISSING'}`);
+
+  try {
+    await t.verify();
+    console.log('[mailer] SMTP connection OK - email will be delivered.');
+  } catch (err) {
+    console.error(`[mailer] SMTP FAILED (${err.code || 'no code'}): ${err.message}`);
+    console.error('[mailer] Email will NOT be delivered. Links are printed to this log as a fallback.');
+  }
+}
+
+module.exports = { sendVerificationEmail, sendPasswordResetEmail, verifyTransport };

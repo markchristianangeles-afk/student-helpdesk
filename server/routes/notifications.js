@@ -1,8 +1,8 @@
-const express = require('express');
+const asyncRouter = require('../utils/asyncRouter');
 const { pool } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 
-const router = express.Router();
+const router = asyncRouter();
 
 router.get('/', requireAuth, async (req, res) => {
   const { rows } = await pool.query(

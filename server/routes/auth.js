@@ -1,14 +1,15 @@
-const express = require('express');
+const asyncRouter = require('../utils/asyncRouter');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
 const { requireAuth, JWT_SECRET } = require('../middleware/auth');
 const { validateEmailOrThrow } = require('../utils/validateEmail');
+const { trimmedString } = require('../utils/input');
 const logActivity = require('../utils/logActivity');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/mailer');
 
-const router = express.Router();
+const router = asyncRouter();
 
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
@@ -37,8 +38,13 @@ function issueToken(res, user) {
 }
 
 router.post('/register', async (req, res) => {
-  const { name, email, password, section } = req.body || {};
-  if (!name || !email || !password || !section || !section.trim()) {
+  const body = req.body || {};
+  const name = trimmedString(body.name);
+  const email = trimmedString(body.email);
+  const section = trimmedString(body.section);
+  const password = typeof body.password === 'string' ? body.password : null;
+
+  if (!name || !email || !password || !section) {
     return res.status(400).json({ error: 'Name, email, password and section are required' });
   }
   if (password.length < 6) {
@@ -59,7 +65,7 @@ router.post('/register', async (req, res) => {
     `INSERT INTO users (name, email, password_hash, role, is_active, section, email_verified, created_at)
      VALUES ($1, $2, $3, 'student', 1, $4, 0, $5)
      RETURNING id, name, email, role, section`,
-    [name, email.toLowerCase(), hash, section.trim(), new Date().toISOString()]
+    [name, email.toLowerCase(), hash, section, new Date().toISOString()]
   );
 
   const user = inserted.rows[0];
@@ -71,7 +77,8 @@ router.post('/register', async (req, res) => {
 });
 
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body || {};
+  const email = trimmedString((req.body || {}).email);
+  const password = typeof (req.body || {}).password === 'string' ? req.body.password : null;
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
   const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
@@ -111,7 +118,7 @@ router.get('/verify-email', async (req, res) => {
 });
 
 router.post('/resend-verification', async (req, res) => {
-  const { email } = req.body || {};
+  const email = trimmedString((req.body || {}).email);
   if (!email) return res.status(400).json({ error: 'Email is required' });
 
   const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
@@ -125,7 +132,7 @@ router.post('/resend-verification', async (req, res) => {
 });
 
 router.post('/forgot-password', async (req, res) => {
-  const { email } = req.body || {};
+  const email = trimmedString((req.body || {}).email);
   if (!email) return res.status(400).json({ error: 'Email is required' });
 
   const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
@@ -144,7 +151,9 @@ router.post('/forgot-password', async (req, res) => {
 });
 
 router.post('/reset-password', async (req, res) => {
-  const { token, password } = req.body || {};
+  const body = req.body || {};
+  const token = trimmedString(body.token);
+  const password = typeof body.password === 'string' ? body.password : null;
   if (!token || !password) return res.status(400).json({ error: 'Token and new password are required' });
   if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
 
@@ -154,9 +163,15 @@ router.post('/reset-password', async (req, res) => {
   if (!user || !user.reset_token_expires || new Date(user.reset_token_expires) < new Date()) {
     return res.status(400).json({ error: 'This reset link is invalid or has expired. Please request a new one.' });
   }
+  if (!user.is_active) return res.status(403).json({ error: 'This account has been deactivated' });
 
   const hash = bcrypt.hashSync(password, 10);
-  await pool.query('UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expires = NULL WHERE id = $2',
+  // Following a link sent to the address proves the mailbox is theirs, so this
+  // doubles as verification - otherwise an unverified user who resets is still
+  // locked out at login with no way forward.
+  await pool.query(
+    `UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expires = NULL,
+     email_verified = 1, verification_token = NULL, verification_token_expires = NULL WHERE id = $2`,
     [hash, user.id]);
 
   res.json({ message: 'Password reset. You can now log in with your new password.' });
@@ -172,38 +187,48 @@ router.get('/me', requireAuth, (req, res) => {
 });
 
 router.patch('/me', requireAuth, async (req, res) => {
-  const { name, email, section, currentPassword, newPassword } = req.body || {};
+  const body = req.body || {};
   const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
   const user = rows[0];
 
   let nextName = user.name;
-  if (name !== undefined) {
-    if (!name.trim()) return res.status(400).json({ error: 'Name cannot be empty' });
-    nextName = name.trim();
+  if (body.name !== undefined) {
+    const name = trimmedString(body.name);
+    if (!name) return res.status(400).json({ error: 'Name cannot be empty' });
+    nextName = name;
   }
 
   let nextSection = user.section;
-  if (section !== undefined) {
-    nextSection = section.trim() || null;
+  if (body.section !== undefined) {
+    nextSection = trimmedString(body.section) || null;
   }
   if (user.role === 'student' && !nextSection) {
     return res.status(400).json({ error: 'Section is required' });
   }
 
   let nextEmail = user.email;
-  if (email !== undefined && email.trim().toLowerCase() !== user.email) {
-    try {
-      await validateEmailOrThrow(email);
-    } catch (err) {
-      return res.status(err.status || 400).json({ error: err.message });
+  let emailChanged = false;
+  if (body.email !== undefined) {
+    const email = trimmedString(body.email);
+    if (!email) return res.status(400).json({ error: 'Email cannot be empty' });
+    if (email.toLowerCase() !== user.email) {
+      try {
+        await validateEmailOrThrow(email);
+      } catch (err) {
+        return res.status(err.status || 400).json({ error: err.message });
+      }
+      const existing = await pool.query('SELECT id FROM users WHERE email = $1 AND id != $2', [email.toLowerCase(), user.id]);
+      if (existing.rows.length > 0) return res.status(409).json({ error: 'An account with this email already exists' });
+      nextEmail = email.toLowerCase();
+      emailChanged = true;
     }
-    const existing = await pool.query('SELECT id FROM users WHERE email = $1 AND id != $2', [email.trim().toLowerCase(), user.id]);
-    if (existing.rows.length > 0) return res.status(409).json({ error: 'An account with this email already exists' });
-    nextEmail = email.trim().toLowerCase();
   }
 
   let nextPasswordHash = null;
-  if (newPassword) {
+  if (body.newPassword) {
+    const newPassword = typeof body.newPassword === 'string' ? body.newPassword : null;
+    const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : null;
+    if (!newPassword) return res.status(400).json({ error: 'New password must be text' });
     if (!currentPassword || !bcrypt.compareSync(currentPassword, user.password_hash)) {
       return res.status(401).json({ error: 'Current password is incorrect' });
     }
@@ -219,6 +244,13 @@ router.patch('/me', requireAuth, async (req, res) => {
   } else {
     await pool.query('UPDATE users SET name = $1, email = $2, section = $3 WHERE id = $4',
       [nextName, nextEmail, nextSection, user.id]);
+  }
+
+  // A new address is unproven, so it has to be verified again before it can be
+  // used to log in - otherwise changing email sidesteps verification entirely.
+  if (emailChanged) {
+    await pool.query('UPDATE users SET email_verified = 0 WHERE id = $1', [user.id]);
+    await issueAndSendVerification({ id: user.id, email: nextEmail, name: nextName });
   }
 
   const changes = [];

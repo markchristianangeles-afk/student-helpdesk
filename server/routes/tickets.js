@@ -1,10 +1,10 @@
-const express = require('express');
+const asyncRouter = require('../utils/asyncRouter');
 const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const notify = require('../utils/notify');
 const logActivity = require('../utils/logActivity');
 
-const router = express.Router();
+const router = asyncRouter();
 
 const PHYSICS_EQUIPMENT_CATEGORY = 'Physics Lab Equipment Borrowing';
 

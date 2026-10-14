@@ -37,6 +37,13 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
+// Last resort for anything that escapes the routers: Node's default is to
+// terminate on an unhandled rejection, which would take every other user's
+// session down with it.
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection:', err);
+});
+
 const PORT = process.env.PORT || 3000;
 
 initDb()

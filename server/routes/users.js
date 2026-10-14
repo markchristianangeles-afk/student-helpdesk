@@ -1,11 +1,12 @@
-const express = require('express');
+const asyncRouter = require('../utils/asyncRouter');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { validateEmailOrThrow } = require('../utils/validateEmail');
+const { trimmedString } = require('../utils/input');
 const logActivity = require('../utils/logActivity');
 
-const router = express.Router();
+const router = asyncRouter();
 
 router.get('/', requireAuth, requireRole('super_admin'), async (req, res) => {
   const { role, q } = req.query;
@@ -33,7 +34,12 @@ router.get('/approvers', requireAuth, requireRole('super_admin', 'admin'), async
 });
 
 router.post('/', requireAuth, requireRole('super_admin'), async (req, res) => {
-  const { name, email, password, role } = req.body || {};
+  const body = req.body || {};
+  const name = trimmedString(body.name);
+  const email = trimmedString(body.email);
+  const role = trimmedString(body.role);
+  const password = typeof body.password === 'string' ? body.password : null;
+
   if (!name || !email || !password || !role) {
     return res.status(400).json({ error: 'Name, email, password and role are required' });
   }
@@ -69,35 +75,57 @@ router.post('/', requireAuth, requireRole('super_admin'), async (req, res) => {
 
 router.patch('/:id', requireAuth, requireRole('super_admin'), async (req, res) => {
   const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid user id' });
+
   const { rows: targetRows } = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
   const target = targetRows[0];
   if (!target) return res.status(404).json({ error: 'User not found' });
 
-  const { name, email, role, is_active, password, section } = req.body || {};
+  const body = req.body || {};
+  const { is_active } = body;
 
-  if (role && !['super_admin', 'admin', 'approver', 'student'].includes(role)) {
-    return res.status(400).json({ error: 'Invalid role' });
+  let nextRole = target.role;
+  if (body.role !== undefined) {
+    const role = trimmedString(body.role);
+    if (!role || !['super_admin', 'admin', 'approver', 'student'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+    nextRole = role;
   }
 
-  if (name !== undefined && !name.trim()) {
-    return res.status(400).json({ error: 'Name cannot be empty' });
+  // Checked before anything is written: the update below used to run first, so
+  // a rejected request still committed the role and email changes alongside it.
+  const passwordProvided = Boolean(body.password);
+  if (passwordProvided && (typeof body.password !== 'string' || body.password.length < 6)) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+
+  let nextName = target.name;
+  if (body.name !== undefined) {
+    const name = trimmedString(body.name);
+    if (!name) return res.status(400).json({ error: 'Name cannot be empty' });
+    nextName = name;
   }
 
   let nextEmail = target.email;
-  if (email !== undefined && email.trim().toLowerCase() !== target.email) {
-    try {
-      await validateEmailOrThrow(email);
-    } catch (err) {
-      return res.status(err.status || 400).json({ error: err.message });
+  if (body.email !== undefined) {
+    const email = trimmedString(body.email);
+    if (!email) return res.status(400).json({ error: 'Email cannot be empty' });
+    if (email.toLowerCase() !== target.email) {
+      try {
+        await validateEmailOrThrow(email);
+      } catch (err) {
+        return res.status(err.status || 400).json({ error: err.message });
+      }
+      const existing = await pool.query('SELECT id FROM users WHERE email = $1 AND id != $2', [email.toLowerCase(), id]);
+      if (existing.rows.length > 0) return res.status(409).json({ error: 'An account with this email already exists' });
+      nextEmail = email.toLowerCase();
     }
-    const existing = await pool.query('SELECT id FROM users WHERE email = $1 AND id != $2', [email.trim().toLowerCase(), id]);
-    if (existing.rows.length > 0) return res.status(409).json({ error: 'An account with this email already exists' });
-    nextEmail = email.trim().toLowerCase();
   }
 
   const demotingOrDeactivatingSuperAdmin =
     target.role === 'super_admin' &&
-    ((role && role !== 'super_admin') || is_active === 0 || is_active === false);
+    (nextRole !== 'super_admin' || is_active === 0 || is_active === false);
 
   if (demotingOrDeactivatingSuperAdmin) {
     const { rows } = await pool.query(
@@ -109,11 +137,11 @@ router.patch('/:id', requireAuth, requireRole('super_admin'), async (req, res) =
   }
 
   const next = {
-    name: name !== undefined ? name.trim() : target.name,
+    name: nextName,
     email: nextEmail,
-    role: role !== undefined ? role : target.role,
+    role: nextRole,
     is_active: is_active !== undefined ? (is_active ? 1 : 0) : target.is_active,
-    section: section !== undefined ? (section.trim() || null) : target.section,
+    section: body.section !== undefined ? (trimmedString(body.section) || null) : target.section,
   };
 
   if (next.role === 'student' && !next.section) {
@@ -124,9 +152,8 @@ router.patch('/:id', requireAuth, requireRole('super_admin'), async (req, res) =
     [next.name, next.email, next.role, next.is_active, next.section, id]);
 
   let passwordReset = false;
-  if (password) {
-    if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    const hash = bcrypt.hashSync(password, 10);
+  if (passwordProvided) {
+    const hash = bcrypt.hashSync(body.password, 10);
     await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, id]);
     passwordReset = true;
   }
@@ -148,6 +175,8 @@ router.patch('/:id', requireAuth, requireRole('super_admin'), async (req, res) =
 
 router.delete('/:id', requireAuth, requireRole('super_admin'), async (req, res) => {
   const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid user id' });
+
   const { rows: targetRows } = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
   const target = targetRows[0];
   if (!target) return res.status(404).json({ error: 'User not found' });

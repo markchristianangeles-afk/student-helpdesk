@@ -40,6 +40,15 @@ function getTransporter() {
   return null;
 }
 
+function escapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Delivery is best effort. A transport failure must not reject into the route
 // handler that triggered it: Express 4 does not catch rejected promises from
 // async handlers, so that surfaces as an unhandled rejection and terminates the
@@ -65,7 +74,7 @@ async function sendVerificationEmail(toEmail, name, verifyUrl) {
     linkLabel: 'Verification link',
     link: verifyUrl,
     html: `
-      <p>Hi ${name},</p>
+      <p>Hi ${escapeHtml(name)},</p>
       <p>Thanks for signing up for Student Helpdesk. Please verify your email address to activate your account:</p>
       <p><a href="${verifyUrl}">${verifyUrl}</a></p>
       <p>This link expires in 24 hours. If you didn't create this account, you can ignore this email.</p>
@@ -80,7 +89,7 @@ async function sendPasswordResetEmail(toEmail, name, resetUrl) {
     linkLabel: 'Password reset link',
     link: resetUrl,
     html: `
-      <p>Hi ${name},</p>
+      <p>Hi ${escapeHtml(name)},</p>
       <p>We received a request to reset your Student Helpdesk password. Click the link below to choose a new one:</p>
       <p><a href="${resetUrl}">${resetUrl}</a></p>
       <p>This link expires in 1 hour. If you didn't request this, you can ignore this email.</p>

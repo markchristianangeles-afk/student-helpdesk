@@ -1,8 +1,8 @@
-const express = require('express');
+const asyncRouter = require('../utils/asyncRouter');
 const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
-const router = express.Router();
+const router = asyncRouter();
 
 router.get('/summary', requireAuth, requireRole('admin', 'super_admin'), async (req, res) => {
   const totalRes = await pool.query('SELECT COUNT(*) AS c FROM tickets');

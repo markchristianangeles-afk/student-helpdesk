@@ -11,6 +11,47 @@ const TIMEOUTS = {
   socketTimeout: 20000,
 };
 
+// Render (and most PaaS hosts) blocks outbound SMTP ports to stop their IP
+// ranges being used for spam - confirmed here by an ETIMEDOUT against
+// smtp.gmail.com:587 with otherwise-correct credentials. Brevo's HTTPS API
+// uses port 443, the same port the app itself is served on, so it is not
+// subject to that block. SMTP is kept as a fallback for hosts where it isn't
+// blocked (a VPS, for instance).
+const BREVO_ENDPOINT = 'https://api.brevo.com/v3/smtp/email';
+const BREVO_TIMEOUT_MS = 15000;
+
+function brevoFromAddress() {
+  return process.env.EMAIL_FROM || process.env.SMTP_USER || process.env.GMAIL_USER || '';
+}
+
+async function sendViaBrevo({ to, subject, html }) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), BREVO_TIMEOUT_MS);
+  try {
+    const res = await fetch(BREVO_ENDPOINT, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'api-key': process.env.BREVO_API_KEY,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        sender: { name: 'Student Helpdesk', email: brevoFromAddress() },
+        to: [{ email: to }],
+        subject,
+        htmlContent: html,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Brevo ${res.status}: ${body.slice(0, 300)}`);
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function getTransporter() {
   if (transporter) return transporter;
 
@@ -64,9 +105,19 @@ function escapeHtml(value) {
 // async handlers, so that surfaces as an unhandled rejection and terminates the
 // process. On failure the link is logged so it can still be recovered manually.
 async function deliver({ to, subject, html, linkLabel, link }) {
+  if (process.env.BREVO_API_KEY) {
+    try {
+      await sendViaBrevo({ to, subject, html });
+      return;
+    } catch (err) {
+      console.error(`[mailer] Brevo send to ${to} failed: ${err.message}. ${linkLabel}: ${link}`);
+      return;
+    }
+  }
+
   const t = getTransporter();
   if (!t) {
-    console.log(`[mailer] No SMTP_HOST (or GMAIL_USER/GMAIL_APP_PASSWORD) configured. ${linkLabel} for ${to}: ${link}`);
+    console.log(`[mailer] No BREVO_API_KEY or SMTP_HOST (or GMAIL_USER/GMAIL_APP_PASSWORD) configured. ${linkLabel} for ${to}: ${link}`);
     return;
   }
 
@@ -109,17 +160,35 @@ async function sendPasswordResetEmail(toEmail, name, resetUrl) {
 
 // Called once at startup so a broken mail setup is obvious in the logs rather
 // than only surfacing when someone tries to register or reset a password.
-// Never logs the password.
+// Never logs the password, API key or app password.
 async function verifyTransport() {
+  if (process.env.BREVO_API_KEY) {
+    console.log(`[mailer] Config: provider=brevo from=${brevoFromAddress() || 'MISSING'} key=set`);
+    try {
+      const res = await fetch('https://api.brevo.com/v3/account', {
+        headers: { 'api-key': process.env.BREVO_API_KEY, Accept: 'application/json' },
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status}: ${body.slice(0, 300)}`);
+      }
+      console.log('[mailer] Brevo API key OK - email will be delivered.');
+    } catch (err) {
+      console.error(`[mailer] Brevo FAILED: ${err.message}`);
+      console.error('[mailer] Email will NOT be delivered. Links are printed to this log as a fallback.');
+    }
+    return;
+  }
+
   const t = getTransporter();
   if (!t) {
-    console.log('[mailer] No SMTP configured. Verification and reset links will be printed to this log instead of emailed.');
-    console.log('[mailer] To send real email set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and EMAIL_FROM.');
+    console.log('[mailer] No BREVO_API_KEY or SMTP configured. Verification and reset links will be printed to this log instead of emailed.');
+    console.log('[mailer] To send real email, set BREVO_API_KEY and EMAIL_FROM (preferred on hosts that block SMTP), or SMTP_HOST/PORT/USER/PASS/EMAIL_FROM.');
     return;
   }
 
   const opts = t.options || {};
-  console.log(`[mailer] Config: host=${opts.host || opts.service || '?'} port=${opts.port || '?'} secure=${opts.secure} user=${opts.auth && opts.auth.user ? 'set' : 'MISSING'} from=${fromAddress || 'MISSING'}`);
+  console.log(`[mailer] Config: provider=smtp host=${opts.host || opts.service || '?'} port=${opts.port || '?'} secure=${opts.secure} user=${opts.auth && opts.auth.user ? 'set' : 'MISSING'} from=${fromAddress || 'MISSING'}`);
 
   try {
     await t.verify();

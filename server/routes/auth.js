@@ -24,7 +24,10 @@ async function issueAndSendVerification(user) {
   await pool.query('UPDATE users SET verification_token = $1, verification_token_expires = $2 WHERE id = $3',
     [token, expires, user.id]);
   const verifyUrl = `${appUrl()}/api/auth/verify-email?token=${token}`;
-  await sendVerificationEmail(user.email, user.name, verifyUrl);
+  // Deliberately not awaited: delivery takes as long as the SMTP server does,
+  // and a slow or unreachable one would otherwise hang the caller's response.
+  // The mailer handles its own failures and logs the link either way.
+  sendVerificationEmail(user.email, user.name, verifyUrl);
 }
 
 function issueToken(res, user) {
@@ -144,7 +147,7 @@ router.post('/forgot-password', async (req, res) => {
     await pool.query('UPDATE users SET reset_token = $1, reset_token_expires = $2 WHERE id = $3',
       [token, expires, user.id]);
     const resetUrl = `${appUrl()}/reset-password.html?token=${token}`;
-    await sendPasswordResetEmail(user.email, user.name, resetUrl);
+    sendPasswordResetEmail(user.email, user.name, resetUrl);
   }
 
   res.json({ message: 'If that email has an account, a password reset link has been sent.' });

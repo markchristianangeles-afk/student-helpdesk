@@ -3,6 +3,14 @@ const nodemailer = require('nodemailer');
 let transporter = null;
 let fromAddress = null;
 
+// Without these, an SMTP host that accepts the TCP connection but never
+// answers leaves the send hanging for the OS default, which is minutes.
+const TIMEOUTS = {
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 20000,
+};
+
 function getTransporter() {
   if (transporter) return transporter;
 
@@ -19,6 +27,7 @@ function getTransporter() {
       auth: process.env.SMTP_USER
         ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
         : undefined,
+      ...TIMEOUTS,
     });
     fromAddress = process.env.EMAIL_FROM || process.env.SMTP_USER;
     return transporter;
@@ -32,6 +41,7 @@ function getTransporter() {
         user: process.env.GMAIL_USER,
         pass: process.env.GMAIL_APP_PASSWORD,
       },
+      ...TIMEOUTS,
     });
     fromAddress = process.env.EMAIL_FROM || process.env.GMAIL_USER;
     return transporter;

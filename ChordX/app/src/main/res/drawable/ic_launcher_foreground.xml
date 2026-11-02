@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Treble clef on a five-line staff; the group is scaled to stay inside a circular launcher mask. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.88"
+        android:scaleY="0.88">
+        <path
+            android:strokeColor="#99FFFFFF"
+            android:strokeWidth="1.4"
+            android:strokeLineCap="round"
+            android:pathData="M24,48h60M24,56h60M24,64h60M24,72h60M24,80h60" />
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="3.4"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M44,89C46,94 54,93 53,85L58,32C58,24 62,20 65,24C68,32 52,44 46,60C40,72 48,82 58,78C68,74 66,60 56,60C48,60 46,70 52,72" />
+    </group>
+</vector>
